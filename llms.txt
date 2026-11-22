@@ -1,0 +1,28 @@
+# HeyRanks
+
+> HeyRanks sends small businesses a weekly, plain-English report on their Google SEO, their visibility in AI assistants (ChatGPT, Gemini, Claude, Perplexity, Copilot) and their digital marketing, with the 5 most important things to fix each week. It costs $10 one-time for 180 days (26 weekly reports), with a $49 lifetime founder plan for the first 500 customers.
+
+HeyRanks is a product of DexoSoft Solutions, based in Bhubaneswar, Odisha, India. It suits local businesses (clinics, restaurants, salons, real estate, coaching), e-commerce brands, freelancers and marketing agencies.
+
+## What each weekly report includes
+- Technical SEO audit: speed, mobile, meta tags, sitemaps, indexing
+- AI visibility: whether AI assistants mention the business for real customer questions
+- Competitor watch (3 competitors, 5 on lifetime)
+- Keyword, content and social media post ideas
+- Google Business Profile and review reply suggestions
+- Copy-paste fixes: Schema.org markup, llms.txt, meta tags
+- Same-day alerts for downtime, SSL expiry and ranking drops (email and WhatsApp)
+
+## Key facts
+- Free scan available on the homepage
+- No auto-renewal; 30-day money-back guarantee
+- No technical skills needed
+
+## Pages
+- [Home and pricing](https://heyranks.com/)
+- [Terms of Service](https://heyranks.com/terms)
+- [Privacy Policy](https://heyranks.com/privacy)
+- [Refund Policy](https://heyranks.com/refund)
+
+## Contact
+hello@heyranks.com
