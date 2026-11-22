@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Get started — HeyRanks</title>
+<meta name="description" content="Set up your weekly SEO and AI visibility reports.">
+<link rel="canonical" href="https://heyranks.com/signup">
+<meta name="robots" content="noindex">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='24' height='24' rx='6' fill='%230f1720'/%3E%3Cpath d='M4 18 L9 12 L13 15 L20 6' stroke='%23d9f99d' stroke-width='2.6' fill='none' stroke-linecap='round'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{--ink:#0f1720;--ink2:#334155;--muted:#64748b;--line:#e2e8f0;--paper:#faf8f4;--accent:#ff5a1f;--mint:#d9f99d;--r:18px}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:Inter,system-ui,sans-serif;background:var(--paper);color:var(--ink);line-height:1.6;min-height:100vh;-webkit-font-smoothing:antialiased}
+a{color:inherit;text-decoration:none}
+
+nav{background:var(--ink);padding:16px 24px;display:flex;align-items:center;gap:10px}
+.logo-mark{width:30px;height:30px;border-radius:8px;background:rgba(255,255,255,.1);display:grid;place-items:center}
+nav span{color:#fff;font-weight:700;font-size:1rem}
+
+.page{max-width:980px;margin:0 auto;padding:40px 24px 80px;display:grid;grid-template-columns:1.1fr .9fr;gap:48px;align-items:start}
+@media(max-width:760px){.page{grid-template-columns:1fr;gap:32px}}
+
+h1{font-family:Fraunces,Georgia,serif;font-size:clamp(1.9rem,4vw,2.6rem);letter-spacing:-.02em;line-height:1.1;margin-bottom:14px}
+.sub{color:var(--ink2);font-size:1.05rem;margin-bottom:28px}
+
+.steps{display:flex;flex-direction:column;gap:14px;margin-bottom:32px}
+.s{display:flex;gap:14px;align-items:flex-start}
+.s .n{flex:none;width:28px;height:28px;border-radius:50%;background:var(--ink);color:#fff;display:grid;place-items:center;font-size:.8rem;font-weight:700;margin-top:2px}
+.s p{font-size:.93rem;color:var(--ink2)}
+.s b{color:var(--ink)}
+
+.report-preview{background:#fff;border:1px solid var(--line);border-radius:20px;padding:22px;box-shadow:0 20px 40px -24px rgba(15,23,32,.2)}
+.rp-head{display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--line);padding-bottom:12px;margin-bottom:16px;font-size:.88rem}
+.rp-head b{font-size:1rem}
+.rp-head small{color:var(--muted)}
+.scores{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-bottom:14px}
+.sc{background:#f8fafc;border-radius:10px;padding:10px;text-align:center}
+.sc b{font-family:Fraunces,serif;font-size:1.5rem;display:block}
+.sc small{font-size:.7rem;color:var(--muted)}
+.up{color:#16a34a;font-size:.7rem;font-weight:700}
+.task-row{display:flex;gap:10px;padding:9px 0;border-top:1px dashed var(--line);font-size:.85rem}
+.task-row i{flex:none;width:22px;height:22px;border-radius:6px;display:grid;place-items:center;font-size:.72rem;font-weight:700}
+.p1{background:#fee2e2;color:#b91c1c}.p2{background:#fef3c7;color:#b45309}.p3{background:#dcfce7;color:#15803d}
+
+/* form */
+.card{background:#fff;border:1px solid var(--line);border-radius:24px;padding:36px;box-shadow:0 4px 24px -8px rgba(15,23,32,.1)}
+.card h2{font-family:Fraunces,serif;font-size:1.5rem;letter-spacing:-.02em;margin-bottom:20px}
+.field{margin-bottom:18px}
+label{display:block;font-size:.88rem;font-weight:600;color:var(--ink2);margin-bottom:6px}
+input,select{width:100%;padding:12px 14px;border:1.5px solid var(--line);border-radius:12px;font:inherit;font-size:.95rem;background:#fff;color:var(--ink);outline:none;transition:.2s}
+input:focus,select:focus{border-color:var(--ink);box-shadow:0 0 0 3px rgba(15,23,32,.07)}
+input::placeholder{color:#94a3b8}
+.hint{font-size:.8rem;color:var(--muted);margin-top:5px}
+.kw-wrap{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;width:100%;padding:15px 24px;border-radius:999px;font:inherit;font-size:1rem;font-weight:700;cursor:pointer;border:none;background:var(--ink);color:#fff;transition:.2s;margin-top:6px}
+.btn:hover{background:var(--accent)}
+.btn:disabled{opacity:.6;cursor:wait}
+.guarantee{margin-top:14px;text-align:center;font-size:.82rem;color:var(--muted)}
+.error-msg{background:#fee2e2;color:#b91c1c;border-radius:10px;padding:10px 14px;font-size:.88rem;margin-bottom:16px;display:none}
+.success{display:none;text-align:center;padding:20px 0}
+.success .big{font-size:3rem;margin-bottom:12px}
+.success h3{font-family:Fraunces,serif;font-size:1.6rem;margin-bottom:10px}
+.success p{color:var(--ink2);font-size:.95rem;max-width:360px;margin:0 auto 20px}
+.success .next{background:#f8fafc;border-radius:14px;padding:16px 20px;text-align:left;font-size:.88rem}
+.success .next li{padding:4px 0;color:var(--ink2)}
+.success .next li::before{content:"✓ ";color:#16a34a;font-weight:700}
+</style>
+</head>
+<body>
+
+<nav>
+  <a href="/" style="display:flex;align-items:center;gap:10px">
+    <span class="logo-mark"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M4 18 L9 12 L13 15 L20 6" stroke="#d9f99d" stroke-width="2.6" stroke-linecap="round"/></svg></span>
+    <span>HeyRanks</span>
+  </a>
+</nav>
+
+<div class="page">
+
+  <!-- left: what they get -->
+  <div>
+    <div style="font-size:.8rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--accent);margin-bottom:12px">Almost there</div>
+    <h1>Tell us where to send your reports</h1>
+    <p class="sub">Takes 60 seconds. Your first report arrives next Monday morning.</p>
+
+    <div class="steps">
+      <div class="s"><span class="n">1</span><p><b>Add your website</b> — we scan it right away and email you the results.</p></div>
+      <div class="s"><span class="n">2</span><p><b>Add 3 keywords</b> — the phrases your customers search for. We track these in Google and AI assistants.</p></div>
+      <div class="s"><span class="n">3</span><p><b>Every Monday</b> you get a report like the one below — your scores, what improved, and 5 specific tasks to do this week.</p></div>
+    </div>
+
+    <div class="report-preview">
+      <div class="rp-head"><div><b>Sample — Week 6 report</b><br><small>sunrise-dental.example</small></div><small>Monday, 8:00 AM</small></div>
+      <div class="scores">
+        <div class="sc"><b>78</b><small>SEO</small><div class="up">▲ 6</div></div>
+        <div class="sc"><b>41</b><small>AI visibility</small><div class="up">▲ 12</div></div>
+      </div>
+      <div class="task-row"><i class="p1">1</i><div>Gemini lists a competitor for "root canal near me". Add a dedicated service page.</div></div>
+      <div class="task-row"><i class="p1">2</i><div>Your robots.txt blocks GPTBot. We've written the fix for you — copy and paste.</div></div>
+      <div class="task-row"><i class="p2">3</i><div>Reply to 4 unanswered Google reviews. Drafts are ready.</div></div>
+      <div class="task-row"><i class="p2">4</i><div>Add FAQ schema to your homepage. Code is ready to copy.</div></div>
+      <div class="task-row"><i class="p3">5</i><div>Post idea: "3 signs you need a root canal". Caption written for you.</div></div>
+    </div>
+  </div>
+
+  <!-- right: form -->
+  <div class="card">
+    <h2>Set up your reports</h2>
+
+    <div class="error-msg" id="err"></div>
+
+    <form id="form">
+      <div class="field">
+        <label for="email">Your email address *</label>
+        <input id="email" type="email" placeholder="you@example.com" required autocomplete="email">
+        <div class="hint">We'll send your weekly report here.</div>
+      </div>
+
+      <div class="field">
+        <label for="website">Your website *</label>
+        <input id="website" type="text" placeholder="yourbusiness.com" required autocomplete="off">
+        <div class="hint">Just the domain — no https:// needed.</div>
+      </div>
+
+      <div class="field">
+        <label>Keywords your customers search for</label>
+        <div class="kw-wrap">
+          <input class="kw" type="text" placeholder="e.g. dentist near me">
+          <input class="kw" type="text" placeholder="e.g. teeth cleaning">
+          <input class="kw" type="text" placeholder="e.g. root canal cost">
+        </div>
+        <div class="hint">Optional — helps us test your AI visibility and find competitor gaps.</div>
+      </div>
+
+      <div class="field">
+        <label for="whatsapp">WhatsApp number for alerts</label>
+        <input id="whatsapp" type="tel" placeholder="+91 98765 43210" autocomplete="tel">
+        <div class="hint">Optional — we'll send instant alerts if your site goes down or rankings drop.</div>
+      </div>
+
+      <input type="hidden" id="plan" value="">
+
+      <button class="btn" type="submit" id="submit">Start my weekly reports →</button>
+      <div class="guarantee">🛡️ 30-day money-back guarantee · No auto-renewal</div>
+    </form>
+
+    <div class="success" id="success">
+      <div class="big">🎉</div>
+      <h3>You're in!</h3>
+      <p>Check your inbox — we're scanning your site now and will send your welcome email shortly.</p>
+      <div class="next">
+        <ul style="list-style:none">
+          <li>Your first scan results will arrive within a few minutes</li>
+          <li>Your full weekly report comes next Monday</li>
+          <li>Reply to any email if you need help</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+// Pre-fill plan from URL params: /signup?plan=lifetime
+const params = new URLSearchParams(location.search);
+document.getElementById('plan').value = params.get('plan') || '180day';
+
+// Pre-fill email if passed via ?email=
+if (params.get('email')) document.getElementById('email').value = params.get('email');
+
+document.getElementById('form').addEventListener('submit', async e => {
+  e.preventDefault();
+  const btn = document.getElementById('submit');
+  const errEl = document.getElementById('err');
+  errEl.style.display = 'none';
+  btn.disabled = true;
+  btn.textContent = 'Setting up your reports…';
+
+  const keywords = [...document.querySelectorAll('.kw')]
+    .map(i => i.value.trim()).filter(Boolean);
+
+  const payload = {
+    email:    document.getElementById('email').value.trim(),
+    website:  document.getElementById('website').value.trim(),
+    keywords,
+    whatsapp: document.getElementById('whatsapp').value.trim() || null,
+    plan:     document.getElementById('plan').value || '180day',
+  };
+
+  try {
+    const r = await fetch('/api/signup', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error || 'Something went wrong. Please try again.');
+    document.getElementById('form').style.display = 'none';
+    document.getElementById('success').style.display = 'block';
+  } catch (err) {
+    errEl.textContent = err.message;
+    errEl.style.display = 'block';
+    btn.disabled = false;
+    btn.textContent = 'Start my weekly reports →';
+  }
+});
+</script>
+</body>
+</html>
