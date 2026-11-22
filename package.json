@@ -1,0 +1,16 @@
+{
+  "name": "heyranks",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node scripts/build-static.mjs",
+    "db:init": "node scripts/init-db.mjs"
+  },
+  "dependencies": {
+    "@libsql/client": "^0.15.0",
+    "@vercel/functions": "^2.0.0"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
