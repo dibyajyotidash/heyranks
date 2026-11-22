@@ -6,14 +6,74 @@
 |---|---|
 | `index.html` | Landing page — free scan calls `/api/scan` |
 | `signup.html` | Post-payment onboarding form |
-| `_worker.js` | Cloudflare Pages Worker — scan, signup, weekly cron, email |
+| `lib/core.js` | All logic — scan, signup, weekly job, email (shared) |
+| `_worker.js` | Cloudflare entry point |
+| `api/index.js` | Vercel entry point |
 | `schema.sql` | D1 database schema (run once) |
 | `wrangler.toml` | Cloudflare config — D1 binding + Monday 6am cron |
 | `terms.html`, `privacy.html`, `refund.html` | Legal pages |
 | `robots.txt`, `sitemap.xml`, `llms.txt` | SEO & AI-visibility files |
 
-> `_worker.js` (advanced mode) handles all requests and the scheduled cron.
+> `_worker.js` (Cloudflare) and `api/index.js` (Vercel) both route to `lib/core.js`.
 > It supersedes `functions/api/scan.js` — that file is kept for reference only.
+
+---
+
+## Deploy on Vercel (+ Turso database)
+
+The site runs on Vercel or Cloudflare from the same code. All logic lives in
+`lib/core.js`. Vercel uses `api/index.js`, `vercel.json` and Turso (SQLite).
+Cloudflare uses `_worker.js`, `wrangler.toml` and D1.
+
+| Vercel file | Purpose |
+|---|---|
+| `api/index.js` | One function for all `/api/*` routes + the cron endpoint |
+| `lib/db.js` | Makes Turso look like D1, so `lib/core.js` is unchanged |
+| `vercel.json` | Build, clean URLs, `/api/*` routing, 300s limit, daily cron |
+| `scripts/build-static.mjs` | Copies only the public pages into `public/` |
+| `scripts/init-db.mjs` | Creates the tables in Turso (`npm run db:init`) |
+
+### 1. Import the repo
+vercel.com → **Add New → Project** → import `dibyajyotidash/heyranks`.
+Framework preset: **Other**. Leave build settings as they are (vercel.json sets them). Deploy.
+
+### 2. Add the database
+Project → **Storage** → **Create Database** → **Turso Cloud** (free plan) → connect it to the project.
+This adds `TURSO_DATABASE_URL` and `TURSO_AUTH_TOKEN` automatically.
+
+Create the tables once, from your computer:
+```
+npm i -g vercel
+vercel link
+vercel env pull .env.local
+npm install
+node --env-file=.env.local scripts/init-db.mjs
+```
+
+### 3. Environment variables
+Project → **Settings → Environment Variables** (Production):
+
+| Name | Value |
+|---|---|
+| `RESEND_API_KEY` | from resend.com |
+| `ADMIN_SECRET` | any long random string (manual weekly run) |
+| `CRON_SECRET` | any long random string. Vercel sends it to `/api/cron` automatically |
+| `PSI_KEY` | optional, Google PageSpeed key |
+
+Then **Deployments → Redeploy** so they take effect.
+
+### 4. Domain
+Project → **Settings → Domains** → add `heyranks.com` and `www.heyranks.com`,
+then set the DNS records Vercel shows at your domain registrar.
+
+### Weekly reports on Vercel
+`vercel.json` runs `/api/cron` **daily at 06:00 UTC** (Hobby plan minimum is daily;
+timing can drift up to 59 min). Each run only reports customers who haven't had a
+report since this week's Monday, so on Monday it sends everyone's report and the other
+days it just retries anyone who failed or didn't fit in Monday's 300-second run. New
+signups get their welcome scan right away and their first weekly report the next Monday.
+
+Manual run: `curl -X POST https://heyranks.com/api/weekly -H "X-Admin-Secret: YOUR_ADMIN_SECRET"`
 
 ---
 
