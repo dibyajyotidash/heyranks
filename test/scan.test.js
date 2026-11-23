@@ -35,3 +35,47 @@ test("public addresses are allowed", () => {
   for (const h of ["8.8.8.8", "172.32.0.1", "1.1.1.1", "2606:4700::1111", "example.com"]) assert.equal(isPrivateAddress(h), false, h);
   for (const h of ["::ffff:127.0.0.1", "fd00::1", "fe80::1"]) assert.equal(isPrivateAddress(h), true, h);
 });
+
+test("IPv6 forms that wrap a private IPv4 are caught after URL parsing rewrites them", () => {
+  // new URL() turns [::ffff:127.0.0.1] into [::ffff:7f00:1]; both spellings must be rejected.
+  for (const h of ["[::ffff:127.0.0.1]", "[::ffff:169.254.169.254]", "[64:ff9b::127.0.0.1]", "[::127.0.0.1]"]) {
+    assert.throws(() => normalize(h), /Invalid host/, h);
+  }
+  for (const h of ["::ffff:7f00:1", "::ffff:a9fe:a9fe", "64:ff9b::a00:1", "::ffff:c0a8:101"]) assert.equal(isPrivateAddress(h), true, h);
+  assert.equal(isPrivateAddress("::ffff:808:808"), false, "8.8.8.8 wrapped in IPv6 is public");
+});
+
+// fetchPublic follows redirects itself. A fake fetch stands in for the network; the start host is a public
+// IP literal, so the DNS check answers locally without a lookup.
+const { fetchPublic } = await import("../lib/core.js");
+async function withFakeFetch(handler, fn) {
+  const real = globalThis.fetch, calls = [];
+  globalThis.fetch = async (url, init) => { calls.push(String(url)); assert.equal(init.redirect, "manual"); return handler(String(url)); };
+  try { return await fn(calls); } finally { globalThis.fetch = real; }
+}
+const redirect = location => new Response(null, { status: 302, headers: { location } });
+
+test("redirects to private or non-web addresses are never fetched", async () => {
+  for (const target of ["http://127.0.0.1:9001/2018-06-01/runtime/invocation/next", "http://169.254.169.254/latest/meta-data/",
+                        "http://[::ffff:a9fe:a9fe]/", "http://printer.local/", "file:///etc/passwd"]) {
+    await withFakeFetch(url => (url.startsWith("https://93.184.216.34/") ? redirect(target) : new Response("secret")), async calls => {
+      const r = await fetchPublic("https://93.184.216.34/");
+      assert.equal(r.ok, false, target);
+      assert.deepEqual(calls, ["https://93.184.216.34/"], `${target} must not be requested`);
+    });
+  }
+});
+
+test("public redirects are followed, relative ones included, up to 5 hops", async () => {
+  await withFakeFetch(url => (url.endsWith("/final") ? new Response("hello") : redirect("/final")), async calls => {
+    const r = await fetchPublic("https://93.184.216.34/start");
+    assert.equal(r.ok, true);
+    assert.equal(r.text, "hello");
+    assert.equal(r.finalUrl, "https://93.184.216.34/final");
+    assert.equal(calls.length, 2);
+  });
+  await withFakeFetch(() => redirect("/again"), async calls => {
+    assert.equal((await fetchPublic("https://93.184.216.34/")).ok, false, "a redirect loop gives up");
+    assert.equal(calls.length, 6);
+  });
+});

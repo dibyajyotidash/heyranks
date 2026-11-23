@@ -150,3 +150,18 @@ test("a full refund takes the payment out of revenue", async () => {
   const paid = await env.DB.prepare("SELECT SUM(amount) AS n FROM payments WHERE status = 'paid'").first();
   assert.equal(paid.n, 414900, "only Ravi's lifetime payment counts");
 });
+
+test("the daily job settles a paid order whose webhook never arrived, once", async () => {
+  const { runDaily } = await import("../lib/core.js");
+  const late = (await call("POST", "auth/signup", { body: { email: "late@example.com", password: "late password" } })).cookie;
+  const r = await call("POST", "checkout", { cookie: late, body: { plan: "180day" } });
+  // The buyer pays and closes the tab: no return page, no webhook.
+  orders.get(r.data.order_id).order_status = "PAID";
+  assert.equal((await call("GET", "me", { cookie: late })).data.user.plan_active, "free");
+
+  const first = await runDaily(env);
+  assert.equal(first.cashfree_settled, 1);
+  assert.equal((await call("GET", "me", { cookie: late })).data.user.plan_active, "180day");
+  const second = await runDaily(env);
+  assert.equal(second.cashfree_settled, 0, "nothing left to settle; the plan isn't extended twice");
+});

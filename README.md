@@ -98,7 +98,7 @@ webhook from another provider, or by an admin (Admin → Users → Manage).
 
 `vercel.json` runs `/api/cron` daily at 06:00 UTC. On the first run each week it sends the weekly
 reports. The other days it retries failures and emails monthly, quarterly, half-yearly and yearly
-summaries once those periods end. Expired sessions and tokens are cleaned up on every run.
+summaries once those periods end. It also settles unpaid Cashfree orders and cleans up expired sessions and tokens.
 
 After deploying, check that query strings reach the API through the `/api/:route*` rewrite (for example,
 `/dashboard` → Monthly tab shows monthly rows).
@@ -126,6 +126,9 @@ Same approach as the market_forecast_web integration: Orders API `2023-08-01` an
    for the right amount, and only once, however many times webhooks or page loads arrive.
 5. A full-refund webhook marks the payment `refunded` and removes it from revenue. Change the user's
    plan in Admin if needed.
+6. Safety net: the daily cron re-checks Cashfree orders from the last 7 days that are still pending
+   (the buyer paid but closed the tab, and the webhook never arrived). Whichever path switches a plan
+   on also emails the buyer a receipt.
 
 Setup in the Cashfree dashboard: add the webhook URL `https://heyranks.com/api/webhook/cashfree`
 (payment success, failed and refund events), whitelist `heyranks.com`, then set the `CASHFREE_*`
