@@ -211,3 +211,12 @@ test("public stats and account deletion", async () => {
   const pay = await env.DB.prepare("SELECT user_id FROM payments WHERE provider = 'manual'").first();
   assert.equal(pay.user_id, null, "payments are kept for accounting, detached from the deleted user");
 });
+
+test("malformed free-scan input doesn't use up the visitor's free scans", async () => {
+  for (let i = 0; i < 12; i++) {
+    const r = await call("POST", "scan", { body: { url: i % 2 ? "not a website" : "127.0.0.1" }, headers: { "x-real-ip": "9.9.9.9" } });
+    assert.equal(r.status, 400);
+  }
+  const row = await env.DB.prepare("SELECT count FROM rate_limits WHERE key = 'scan:9.9.9.9'").first();
+  assert.equal(row, null, "no free scans were counted");
+});
