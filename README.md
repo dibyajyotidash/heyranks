@@ -70,9 +70,16 @@ to `legacy_customers`/`legacy_reports`, and their data is copied into users, sit
 | 180-Day Pass (₹849) | 1 | ✓ | ✓ | 10 |
 | Lifetime (₹4,149) | 3 | ✓ | ✓ | 10 |
 
-Prices live in `PLANS` in `lib/core.js` (in paise). The landing page copy repeats them, so change both.
+Prices live in `PLANS` in `lib/plans.js` (in paise). The landing page copy repeats them, so change both.
 New accounts start on Free. A paid plan is switched on by a **Cashfree payment**, by a verified
 webhook from another provider, or by an admin (Admin → Users → Manage).
+
+- **Lifetime is capped at 500 sales** (`LIFETIME_CAP` in `lib/plans.js`). Checkout refuses Lifetime once
+  500 are paid or in checkout, and the pricing card shows how many places are left.
+- **A full refund removes access automatically.** A refunded 180-Day Pass loses its 180 days, and a refunded
+  Lifetime plan returns to Free. Partial refunds don't change access.
+- **The score never depends on PageSpeed.** It uses the 10 fixed checks, whose weights add up to 100.
+  Mobile speed is shown next to it when Google answers.
 
 ## Environment variables
 
@@ -81,7 +88,8 @@ webhook from another provider, or by an admin (Admin → Users → Manage).
 | `TURSO_DATABASE_URL`, `TURSO_AUTH_TOKEN` | Vercel | Database (added by the Turso integration) |
 | `RESEND_API_KEY` | yes | Email (reports, login links, resets) |
 | `ADMIN_EMAILS` | yes | Comma-separated. These users become admins once they confirm their email |
-| `SITE_URL` | recommended | `https://heyranks.com`, used in emailed links |
+| `SITE_URL` | yes | `https://heyranks.com`. Used for links in emails and payment return URLs. Without it, links use `https://heyranks.com` (never the request's Host header) |
+| `FREE_SCANS_PER_HOUR` | optional | Site-wide cap on free homepage scans (default 300), on top of 10 per visitor per hour |
 | `CRON_SECRET` | Vercel | Protects `/api/cron` (Vercel sends it automatically) |
 | `ADMIN_SECRET` | optional | Manual job run: `POST /api/weekly` with header `X-Admin-Secret` |
 | `CASHFREE_APP_ID`, `CASHFREE_SECRET_KEY` | yes (payments) | Cashfree API keys (merchant.cashfree.com → Developers → API keys) |
@@ -161,8 +169,8 @@ Same approach as the market_forecast_web integration: Orders API `2023-08-01` an
 3. Cashfree sends the user to `/payment?order_id=…` and calls `/api/webhook/cashfree`.
 4. Both of these ask Cashfree's API for the order. The plan is granted only when the order is `PAID`
    for the right amount, and only once, however many times webhooks or page loads arrive.
-5. A full-refund webhook marks the payment `refunded` and removes it from revenue. Change the user's
-   plan in Admin if needed.
+5. A full-refund webhook marks the payment `refunded`, removes it from revenue and takes back the
+   plan it paid for. Partial refunds change nothing.
 6. Safety net: the daily cron re-checks Cashfree orders from the last 7 days that are still pending
    (the buyer paid but closed the tab, and the webhook never arrived). Whichever path switches a plan
    on also emails the buyer a receipt.
@@ -179,9 +187,12 @@ If you take a payment some other way, record it in Admin → Users → Manage so
 
 ## Still to do before launch
 
-1. Set `RESEND_API_KEY` and verify `heyranks.com` in Resend (DKIM).
-2. Set the `CASHFREE_*` variables, add the Cashfree webhook, and do one sandbox purchase end to end.
-3. Several landing-page features aren't built yet: AI-assistant answer tracking, competitor watch,
-   WhatsApp alerts, PDF reports, review replies, content ideas. Build them or soften the copy.
-4. Have `terms.html`, `privacy.html` and `refund.html` reviewed. The privacy policy should mention
-   account data, session IPs (for security) and the anonymous visit counter.
+1. Set `SITE_URL=https://heyranks.com` and `RESEND_API_KEY`, and verify `heyranks.com` in Resend (DKIM).
+   Until Resend is set, no report is marked as sent; they all go out once it is.
+2. Set the `CASHFREE_*` variables, add the Cashfree webhook, and do one sandbox purchase end to end:
+   pay, duplicate webhook, full refund (the plan should end) and partial refund (the plan should stay).
+3. Set `PSI_KEY` so the mobile speed shows on every scan.
+4. Have a lawyer review `terms.html`, `privacy.html` and `refund.html` for India.
+5. Before adding features to the landing page, ship and test them. The page now describes only what
+   the scanner does; "Not included yet" lists AI-answer checks, rankings, competitors and Google Business
+   Profile.
