@@ -52,7 +52,7 @@
           <label for="kw1">Keywords your customers search for</label>
           <div class="grid cols-2" style="gap:8px">
             <input class="input kw" id="kw1" placeholder="dentist near me">
-            <input class="input kw" placeholder="teeth cleaning cost">
+            <input class="input kw" id="kw2" aria-label="Second keyword (optional)" placeholder="teeth cleaning cost">
           </div>
           <div class="hint">Optional.</div>
         </div>
@@ -83,7 +83,8 @@ async function continueToPayment(email) {
   if (plan && config.cashfree) return HR.checkout(plan);
   const link = plan && config.payment_links[plan];
   if (link) { location.href = link + (link.includes("?") ? "&" : "?") + "prefilled_email=" + encodeURIComponent(email); return; }
-  location.replace("/dashboard?welcome=1" + (plan ? `&plan=${plan}` : ""));
+  // No online payment configured: the dashboard's Plan card shows how to upgrade (it scrolls there for ?plan=).
+  location.replace("/dashboard?welcome=1" + (plan ? `&plan=${plan}#account` : ""));
 }
 
 // Already logged in: no need for a second account.
@@ -113,6 +114,7 @@ document.getElementById("form").addEventListener("submit", async e => {
     keywords: [...document.querySelectorAll(".kw")].map(i => i.value.trim()).filter(Boolean),
   };
   if (!body.email || !body.password) return say("Enter your email and a password.");
+  if (body.password.length < 8) { document.getElementById("password").focus(); return say("Use at least 8 characters for your password."); }
   const btn = document.getElementById("submit");
   btn.disabled = true; btn.textContent = "Creating your account…"; say("");
   try {

@@ -180,7 +180,13 @@ async function boot() {
   renderSiteSelect();
   route();
   const q = new URLSearchParams(location.search);
-  if (q.get("welcome")) { toast("Welcome to HeyRanks! Check your inbox to confirm your email."); history.replaceState(null, "", location.pathname + location.hash); }
+  const picked = { "180day": "180-Day Pass", lifetime: "Lifetime Founder" }[q.get("plan")];
+  if (picked && me.plan_active === "free") {
+    // Came from a paid "Start" button but checkout couldn't open: point at the Plan card instead of dropping the choice.
+    toast(`Your account is ready. Finish upgrading to the ${picked} below.`);
+    setTimeout(() => document.getElementById("plan-card")?.scrollIntoView({ block: "center" }), 300);
+  } else if (q.get("welcome")) toast("Welcome to HeyRanks! Check your inbox to confirm your email.");
+  if (q.get("welcome") || q.get("plan")) history.replaceState(null, "", location.pathname + location.hash);
 }
 
 function route() {
@@ -457,7 +463,9 @@ async function renderPlan() {
     </div>
     <p class="hint" style="margin-top:8px">${config.cashfree
       ? "One-time payment through Cashfree: UPI, cards, net banking or wallets. Your plan switches on as soon as it goes through."
-      : `Pay with ${esc(me.email)} and your plan switches on automatically${me.email_verified ? "" : " once your email is confirmed"}.`}</p>` : ""}`;
+      : config.payment_links?.["180day"] || config.payment_links?.lifetime
+        ? `Pay with ${esc(me.email)} and your plan switches on automatically${me.email_verified ? "" : " once your email is confirmed"}.`
+        : "Online payment is being set up. Tap a plan to email us and we'll send you a secure payment link."}</p>` : ""}`;
 }
 document.getElementById("plan-card").addEventListener("click", async e => {
   const b = e.target.closest("[data-buy]");

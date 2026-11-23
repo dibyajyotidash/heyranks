@@ -86,7 +86,7 @@ webhook from another provider, or by an admin (Admin → Users → Manage).
 | `PAYMENT_LINK_180DAY`, `PAYMENT_LINK_LIFETIME` | optional | Fallback payment links, used only when Cashfree isn't configured |
 | `STRIPE_SECRET` / `RAZORPAY_SECRET` / `LEMONSQUEEZY_SECRET` | optional | Signing secrets for other providers' webhooks. Unsigned webhooks are rejected |
 | `CURRENCY` | optional | Main currency in the admin revenue view (default `INR`) |
-| `PSI_KEY` | optional | Google PageSpeed key |
+| `PSI_KEY` | recommended | Google PageSpeed Insights API key. Without it Google's shared quota usually refuses, so scans have no speed score (`speed: null`) |
 
 ## Deploy on Vercel (+ Turso)
 
