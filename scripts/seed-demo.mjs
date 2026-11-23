@@ -129,8 +129,8 @@ for (let i = 0; i < 60; i++) {
     plan === "180day" ? iso(created + 180 * DAY) : null, iso(created), iso(created), iso(created), iso(created + rand() * (now - created)));
   if (plan !== "free") {
     await run(`INSERT INTO payments (id, user_id, email, provider, provider_ref, plan, amount, currency, status, applied_at, created_at)
-      VALUES (?, ?, ?, 'demo', ?, ?, ?, 'USD', 'paid', ?, ?)`, crypto.randomUUID(), id, `demo${i + 1}@example.com`,
-      crypto.randomUUID(), plan, plan === "lifetime" ? 4900 : 1000, iso(created), iso(created));
+      VALUES (?, ?, ?, 'demo', ?, ?, ?, 'INR', 'paid', ?, ?)`, crypto.randomUUID(), id, `demo${i + 1}@example.com`,
+      crypto.randomUUID(), plan, plan === "lifetime" ? 414900 : 84900, iso(created), iso(created));
     payments++;
   }
 }

@@ -434,12 +434,15 @@ function renderAccount() {
 }
 
 async function renderPlan() {
-  config ??= await api("config").catch(() => ({ payment_links: {} }));
+  config ??= await api("config").catch(() => ({ payment_links: {}, plans: {} }));
+  // Cashfree checkout when it's configured; otherwise a payment link, otherwise email us.
   const link = plan => {
+    if (config.cashfree) return "#";
     const url = config.payment_links?.[plan];
     return url ? `${esc(url)}${url.includes("?") ? "&" : "?"}prefilled_email=${encodeURIComponent(me.email)}`
-      : `mailto:hello@heyranks.com?subject=${encodeURIComponent(`Upgrade ${me.email} to ${plan}`)}`;
+      : `mailto:hello@dexosoftsolutions.com?subject=${encodeURIComponent(`Upgrade ${me.email} to ${plan}`)}`;
   };
+  const price = plan => HR.money(config.plans?.[plan]?.price ?? 0, config.currency || "INR");
   const p = me.plan_active;
   document.getElementById("plan-card").innerHTML = `
     <div class="card-head"><div><h2>Plan</h2><p>${p === "free" ? "Free forever. Upgrade any time." : p === "lifetime" ? "Paid once. Reports for life." : `Active until ${date(me.plan_expires_at)}`}</p></div><span class="badge ${p === "free" ? "" : "good"}">${esc(me.plan_label)}</span></div>
@@ -449,11 +452,21 @@ async function renderPlan() {
       ${me.limits.weekly ? "<li>Weekly report by email every Monday</li><li>Monthly, quarterly, half-yearly and yearly summaries</li>" : ""}
     </ul>
     ${p !== "lifetime" ? `<div class="row">
-      ${p === "free" || p === "180day" ? `<a class="btn primary sm" href="${link("180day")}">${p === "180day" ? "Add 180 days" : "180-Day Pass"} · $10</a>` : ""}
-      <a class="btn sm" href="${link("lifetime")}">Lifetime · $49</a>
+      <a class="btn primary sm" data-buy="180day" href="${link("180day")}">${p === "180day" ? "Add 180 days" : "180-Day Pass"} · ${price("180day")}</a>
+      <a class="btn sm" data-buy="lifetime" href="${link("lifetime")}">Lifetime · ${price("lifetime")}</a>
     </div>
-    <p class="hint" style="margin-top:8px">Pay with ${esc(me.email)} and your plan switches on automatically${me.email_verified ? "" : " once your email is confirmed"}.</p>` : ""}`;
+    <p class="hint" style="margin-top:8px">${config.cashfree
+      ? "One-time payment through Cashfree: UPI, cards, net banking or wallets. Your plan switches on as soon as it goes through."
+      : `Pay with ${esc(me.email)} and your plan switches on automatically${me.email_verified ? "" : " once your email is confirmed"}.`}</p>` : ""}`;
 }
+document.getElementById("plan-card").addEventListener("click", async e => {
+  const b = e.target.closest("[data-buy]");
+  if (!b || !config?.cashfree) return;
+  e.preventDefault();
+  b.classList.add("disabled"); b.textContent = "Opening payment…";
+  try { await HR.checkout(b.dataset.buy); }
+  catch (err) { toast(err.message); renderPlan(); }
+});
 
 function renderSites() {
   document.getElementById("sites-limit").textContent = `${sites.length} of ${me.limits.sites} on your plan`;

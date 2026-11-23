@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Payment — HeyRanks</title>
+<meta name="robots" content="noindex">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='24' height='24' rx='6' fill='%230f1720'/%3E%3Cpath d='M4 18 L9 12 L13 15 L20 6' stroke='%23d9f99d' stroke-width='2.6' fill='none' stroke-linecap='round'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/assets/app.css">
+<script src="/assets/app.js"></script>
+</head>
+<body>
+<main class="auth-main" style="min-height:100vh">
+  <div class="auth-box card" style="padding:32px;text-align:center">
+    <div id="icon" style="font-size:2.4rem;margin-bottom:8px"><span class="spinner" style="width:28px;height:28px"></span></div>
+    <h1 id="title">Confirming your payment…</h1>
+    <p class="sub" id="text" style="margin:10px 0 22px">This usually takes a few seconds. Please don't close this page.</p>
+    <div id="actions" class="row hidden" style="justify-content:center"></div>
+    <p class="hint" id="ref" style="margin-top:18px"></p>
+  </div>
+</main>
+<script>
+const { api, esc, date, checkout } = HR;
+const orderId = new URLSearchParams(location.search).get("order_id");
+const $ = id => document.getElementById(id);
+
+function show(icon, title, text, actions) {
+  $("icon").textContent = icon;
+  $("title").textContent = title;
+  $("text").textContent = text;
+  $("actions").innerHTML = actions;
+  $("actions").classList.remove("hidden");
+}
+
+async function poll(tries = 0) {
+  if (!orderId) return show("⚠️", "No payment found", "This link is missing its order reference.", `<a class="btn primary" href="/dashboard">Go to my dashboard</a>`);
+  $("ref").textContent = `Order ${orderId}`;
+  try {
+    const r = await api(`checkout/${encodeURIComponent(orderId)}`);
+    if (r.status === "paid") {
+      const u = r.user;
+      return show("🎉", `You're on the ${u.plan_label}!`,
+        u.plan_active === "lifetime" ? "Weekly reports for life. Your first one arrives next Monday."
+          : `Your weekly reports run until ${date(u.plan_expires_at)}. The first one arrives next Monday.`,
+        `<a class="btn primary" href="/dashboard">Open my dashboard →</a>`);
+    }
+    if (r.status === "failed" || r.status === "refunded") {
+      return show("⚠️", "Payment didn't go through", "No money was taken for this order. You can try again.",
+        `<button class="btn primary" data-retry="${esc(r.plan)}">Try again</button><a class="btn ghost" href="/dashboard">Dashboard</a>`);
+    }
+    // Pending: Cashfree may still be confirming (UPI and net banking can take a moment).
+    if (tries < 12) return setTimeout(() => poll(tries + 1), 2500);
+    show("⏳", "Still waiting for your bank", "If you completed the payment, your plan switches on automatically within a few minutes and we'll email you. If you cancelled, you can try again.",
+      `<button class="btn primary" data-retry="${esc(r.plan)}">Try again</button><a class="btn ghost" href="/dashboard">Dashboard</a>`);
+  } catch (err) {
+    if (tries < 3) return setTimeout(() => poll(tries + 1), 2500);
+    show("⚠️", "We couldn't check this payment", `${err.message} If money was taken, email hello@dexosoftsolutions.com with the order reference below.`,
+      `<a class="btn primary" href="/dashboard">Go to my dashboard</a>`);
+  }
+}
+
+$("actions").addEventListener("click", async e => {
+  const b = e.target.closest("[data-retry]");
+  if (!b) return;
+  b.disabled = true;
+  try { await checkout(b.dataset.retry); } catch (err) { b.disabled = false; alert(err.message); }
+});
+poll();
+</script>
+</body>
+</html>

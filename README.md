@@ -23,6 +23,7 @@ reset links are printed in the terminal instead.
 |---|---|
 | `index.html` | Landing page: free scan, live counters, pricing |
 | `signup.html`, `login.html`, `reset.html` | Accounts: password, email login link, password reset |
+| `payment.html` | Return page after Cashfree checkout: confirms the payment and shows the plan |
 | `dashboard.html` | User dashboard: scores, period reports, fixes, account settings |
 | `admin.html` | Admin: revenue, customers, signups, visits, user management |
 | `assets/app.css`, `assets/app.js` | Shared styles, API helper and SVG charts for the app pages |
@@ -30,6 +31,7 @@ reset links are printed in the terminal instead.
 | `lib/schema.js` | **Database schema + migrations** (source of truth; runs automatically) |
 | `lib/reports.js` | Weekly → yearly period roll-ups |
 | `lib/auth.js` | Password hashing, sessions, login tokens, rate limits |
+| `lib/cashfree.js` | Cashfree Orders API client and webhook signature check |
 | `lib/core.js` | Site scanner, email templates, daily job |
 | `lib/db.js` | Turso/libSQL adapter with the D1 API (Vercel + local) |
 | `_worker.js` / `api/index.js` | Cloudflare / Vercel entry points (both call `lib/api.js`) |
@@ -61,12 +63,12 @@ to `legacy_customers`/`legacy_reports`, and their data is copied into users, sit
 | Plan | Sites | Weekly email | Period summaries by email | Rescans/day |
 |---|---|---|---|---|
 | Free | 1 | – | – | 3 |
-| 180-Day Pass ($10) | 1 | ✓ | ✓ | 10 |
-| Lifetime ($49) | 3 | ✓ | ✓ | 10 |
+| 180-Day Pass (₹849) | 1 | ✓ | ✓ | 10 |
+| Lifetime (₹4,149) | 3 | ✓ | ✓ | 10 |
 
-New accounts start on Free. A paid plan is switched on by a **verified payment webhook** or by an
-admin (Admin → Users → Manage). Payments are matched by email and only applied once the user has
-confirmed that email, so nobody can claim someone else's payment by signing up with their address.
+Prices live in `PLANS` in `lib/core.js` (in paise). The landing page copy repeats them, so change both.
+New accounts start on Free. A paid plan is switched on by a **Cashfree payment**, by a verified
+webhook from another provider, or by an admin (Admin → Users → Manage).
 
 ## Environment variables
 
@@ -78,9 +80,12 @@ confirmed that email, so nobody can claim someone else's payment by signing up w
 | `SITE_URL` | recommended | `https://heyranks.com`, used in emailed links |
 | `CRON_SECRET` | Vercel | Protects `/api/cron` (Vercel sends it automatically) |
 | `ADMIN_SECRET` | optional | Manual job run: `POST /api/weekly` with header `X-Admin-Secret` |
-| `PAYMENT_LINK_180DAY`, `PAYMENT_LINK_LIFETIME` | optional | Stripe/Razorpay payment links for the upgrade buttons |
-| `STRIPE_SECRET` / `RAZORPAY_SECRET` / `LEMONSQUEEZY_SECRET` | per provider | Webhook signing secrets. Unsigned webhooks are rejected |
-| `CURRENCY` | optional | Main currency in the admin revenue view (default `USD`) |
+| `CASHFREE_APP_ID`, `CASHFREE_SECRET_KEY` | yes (payments) | Cashfree API keys (merchant.cashfree.com → Developers → API keys) |
+| `CASHFREE_ENV` | yes (payments) | `sandbox` for test keys, `production` for live keys |
+| `CASHFREE_WEBHOOK_SECRET` | optional | Webhook signing secret, if different from the secret key |
+| `PAYMENT_LINK_180DAY`, `PAYMENT_LINK_LIFETIME` | optional | Fallback payment links, used only when Cashfree isn't configured |
+| `STRIPE_SECRET` / `RAZORPAY_SECRET` / `LEMONSQUEEZY_SECRET` | optional | Signing secrets for other providers' webhooks. Unsigned webhooks are rejected |
+| `CURRENCY` | optional | Main currency in the admin revenue view (default `INR`) |
 | `PSI_KEY` | optional | Google PageSpeed key |
 
 ## Deploy on Vercel (+ Turso)
@@ -109,23 +114,34 @@ The D1 binding is in `wrangler.toml`. Tables are created on the first request (n
 `_worker.js` serves only public files, so `lib/`, `scripts/` and other source files aren't downloadable.
 For scheduled jobs, use a daily trigger (`0 6 * * *`) that calls `/api/weekly` with `X-Admin-Secret`.
 
-## Payments
+## Payments (Cashfree)
 
-Point your provider's webhook at `https://heyranks.com/api/webhook` and set its signing secret.
+Same approach as the market_forecast_web integration: Orders API `2023-08-01` and the JS SDK v3.
 
-- **Stripe:** event `checkout.session.completed`. Put `{"plan":"180day"}` or `{"plan":"lifetime"}` in the session metadata.
-- **Razorpay:** event `payment.captured`. Put `plan` in the payment notes.
-- **Lemon Squeezy:** event `order_created`. Put `plan` in the custom data.
+1. A logged-in user clicks a plan. `POST /api/checkout` saves a `pending` payment and creates a
+   Cashfree order (₹849 or ₹4,149). Clicking again within 30 minutes reuses the same order.
+2. The browser opens Cashfree's checkout (UPI, cards, net banking, wallets).
+3. Cashfree sends the user to `/payment?order_id=…` and calls `/api/webhook/cashfree`.
+4. Both of these ask Cashfree's API for the order. The plan is granted only when the order is `PAID`
+   for the right amount, and only once, however many times webhooks or page loads arrive.
+5. A full-refund webhook marks the payment `refunded` and removes it from revenue. Change the user's
+   plan in Admin if needed.
 
-Payments are idempotent: provider retries are ignored. If you take a payment outside the webhook, record
-it in Admin → Users → Manage so revenue stays accurate.
+Setup in the Cashfree dashboard: add the webhook URL `https://heyranks.com/api/webhook/cashfree`
+(payment success, failed and refund events), whitelist `heyranks.com`, then set the `CASHFREE_*`
+variables. Test with sandbox keys and `CASHFREE_ENV=sandbox` first. Locally, Cashfree can't reach
+your webhook, so the `/payment` page settles the order instead.
+
+**Other providers:** `/api/webhook` still accepts signed Stripe (`checkout.session.completed`),
+Razorpay (`payment.captured`) and Lemon Squeezy (`order_created`) events, with `plan` in the
+metadata. These are matched by email and applied once the user has confirmed that email.
+If you take a payment some other way, record it in Admin → Users → Manage so revenue stays accurate.
 
 ## Still to do before launch
 
 1. Set `RESEND_API_KEY` and verify `heyranks.com` in Resend (DKIM).
-2. Create the payment links and webhooks, then set `PAYMENT_LINK_*` and the signing secret.
-3. Replace the `+91 00000 00000` WhatsApp placeholder in `index.html`.
-4. Several landing-page features aren't built yet: AI-assistant answer tracking, competitor watch,
+2. Set the `CASHFREE_*` variables, add the Cashfree webhook, and do one sandbox purchase end to end.
+3. Several landing-page features aren't built yet: AI-assistant answer tracking, competitor watch,
    WhatsApp alerts, PDF reports, review replies, content ideas. Build them or soften the copy.
-5. Have `terms.html`, `privacy.html` and `refund.html` reviewed. The privacy policy should mention
+4. Have `terms.html`, `privacy.html` and `refund.html` reviewed. The privacy policy should mention
    account data, session IPs (for security) and the anonymous visit counter.

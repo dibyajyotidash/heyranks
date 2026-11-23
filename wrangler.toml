@@ -13,6 +13,7 @@ database_id = "97003260-65b8-437c-8af7-7bab3d3f6f76"
 # Tables are created / migrated automatically on the first request (lib/schema.js).
 # Env vars — set secrets via `wrangler pages secret put <NAME>` (full list in README.md):
 #   RESEND_API_KEY, ADMIN_EMAILS, SITE_URL, ADMIN_SECRET
-#   PAYMENT_LINK_180DAY, PAYMENT_LINK_LIFETIME           (optional — upgrade buttons)
+#   CASHFREE_APP_ID, CASHFREE_SECRET_KEY, CASHFREE_ENV   (payments; + CASHFREE_WEBHOOK_SECRET if separate)
+#   PAYMENT_LINK_180DAY, PAYMENT_LINK_LIFETIME           (optional fallback when Cashfree is off)
 #   STRIPE_SECRET | RAZORPAY_SECRET | LEMONSQUEEZY_SECRET (webhook signing secrets)
 #   PSI_KEY, CURRENCY                                     (optional)

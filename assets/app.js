@@ -26,7 +26,7 @@
     if (a >= 1e4) return (n / 1e3).toFixed(1).replace(/\.0$/, "") + "K";
     return fmt(Math.round(n));
   };
-  const money = (minor, cur = "USD") => new Intl.NumberFormat("en-US", {
+  const money = (minor, cur = "INR") => new Intl.NumberFormat(cur === "INR" ? "en-IN" : "en-US", {
     style: "currency", currency: cur, maximumFractionDigits: minor % 100 ? 2 : 0, minimumFractionDigits: 0,
   }).format((minor || 0) / 100);
   const date = (iso, o = { day: "numeric", month: "short", year: "numeric" }) =>
@@ -57,6 +57,24 @@
   function track() {
     fetch("/api/track", { method: "POST", headers: { "content-type": "application/json" },
       body: JSON.stringify({ path: location.pathname }), keepalive: true }).catch(() => {});
+  }
+
+  /**
+   * Opens Cashfree's checkout for a paid plan. Cashfree sends the buyer back to
+   * /payment?order_id=..., which confirms the payment. Throws if checkout can't start.
+   */
+  async function checkout(plan) {
+    const order = await api("checkout", { method: "POST", body: { plan } });
+    if (!window.Cashfree) {
+      await new Promise((resolve, reject) => {
+        const s = document.createElement("script");
+        s.src = "https://sdk.cashfree.com/js/v3/cashfree.js";
+        s.onload = resolve;
+        s.onerror = () => reject(new Error("Couldn't load the payment page. Check your connection and try again."));
+        document.head.append(s);
+      });
+    }
+    window.Cashfree({ mode: order.mode }).checkout({ paymentSessionId: order.payment_session_id, redirectTarget: "_self" });
   }
 
   function initials(user) {
@@ -229,5 +247,5 @@
     });
   }
 
-  window.HR = { api, esc, fmt, compact, money, date, ago, toast, track, initials, scoreClass, scoreWord, signed, lineChart, barChart };
+  window.HR = { api, esc, fmt, compact, money, date, ago, toast, track, checkout, initials, scoreClass, scoreWord, signed, lineChart, barChart };
 })();
