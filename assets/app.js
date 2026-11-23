@@ -54,11 +54,6 @@
     toastTimer = setTimeout(() => el.classList.remove("show"), 2800);
   }
 
-  function track() {
-    fetch("/api/track", { method: "POST", headers: { "content-type": "application/json" },
-      body: JSON.stringify({ path: location.pathname }), keepalive: true }).catch(() => {});
-  }
-
   /**
    * Opens Cashfree's checkout for a paid plan. Cashfree sends the buyer back to
    * /payment?order_id=..., which confirms the payment. Throws if checkout can't start.
@@ -247,5 +242,5 @@
     });
   }
 
-  window.HR = { api, esc, fmt, compact, money, date, ago, toast, track, checkout, initials, scoreClass, scoreWord, signed, lineChart, barChart };
+  window.HR = { api, esc, fmt, compact, money, date, ago, toast, checkout, initials, scoreClass, scoreWord, signed, lineChart, barChart };
 })();

@@ -20,6 +20,16 @@
   .manage select, .manage input { padding: 7px 10px; border: 1.5px solid var(--line); border-radius: 8px; background: var(--surface); }
   .user-cell b { display: block; font-weight: 600; }
   .user-cell span { color: var(--muted); font-size: .8rem; }
+  /* ranked lists: label, number, and a thin bar showing its share of the top item */
+  .rank { padding: 6px 0; }
+  .rank-row { display: flex; justify-content: space-between; gap: 12px; font-size: .88rem; }
+  .rank-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+  .rank-row .num { color: var(--ink); font-weight: 600; flex: none; }
+  .rank-row .num small { color: var(--muted); font-weight: 400; margin-left: 6px; }
+  .rank-bar { height: 6px; background: var(--line-2); border-radius: 99px; margin-top: 5px; overflow: hidden; }
+  .rank-bar div { height: 100%; background: var(--series); border-radius: 99px; }
+  .pages-cell { max-width: 340px; overflow: hidden; text-overflow: ellipsis; }
+  .vgrid { margin-top: 16px; align-items: start; }
 </style>
 </head>
 <body>
@@ -37,19 +47,56 @@
 
   <div id="app" class="hidden">
     <div class="page-head">
-      <div><h1>Business overview</h1><p class="muted small" id="as-of">Live from the database</p></div>
+      <div><h1 id="view-title">Business overview</h1><p class="muted small" id="as-of">Live from the database</p></div>
+      <div class="tabs" role="tablist" id="views" aria-label="Admin views">
+        <button role="tab" data-view="business">Business</button>
+        <button role="tab" data-view="visitors">Visitors</button>
+      </div>
     </div>
 
     <div class="filters">
-      <div class="tabs" role="tablist" id="range">
+      <div class="tabs" role="tablist" id="range" aria-label="Date range">
         <button role="tab" data-days="7">7 days</button>
         <button role="tab" data-days="30">30 days</button>
         <button role="tab" data-days="90">90 days</button>
         <button role="tab" data-days="365">12 months</button>
       </div>
-      <label class="check"><input type="checkbox" id="demo"> Include demo data</label>
+      <label class="check" id="demo-wrap"><input type="checkbox" id="demo"> Include demo data</label>
     </div>
 
+    <!-- ─── Visitors ─── -->
+    <section id="view-visitors" class="hidden">
+      <div class="grid cols-4" id="v-kpis"></div>
+      <div class="grid cols-2 vgrid">
+        <div class="card"><div class="card-head"><div><h2>Daily traffic</h2><p>Unique visitors per day</p></div></div><div class="chart" id="v-daily"></div></div>
+        <div class="card"><div class="card-head"><div><h2>Sign-up funnel</h2><p id="v-funnel-sub">From first visit to paying customer</p></div></div><div id="v-funnel"></div></div>
+      </div>
+      <div class="grid cols-3 vgrid">
+        <div class="card"><div class="card-head"><div><h2>Top pages</h2><p>By page views</p></div></div><div id="v-pages"></div></div>
+        <div class="card"><div class="card-head"><div><h2>Where they come from</h2><p>Referring websites</p></div></div><div id="v-referrers"></div></div>
+        <div class="card"><div class="card-head"><div><h2>Campaigns</h2><p>UTM source / medium</p></div></div><div id="v-utm"></div></div>
+      </div>
+      <div class="grid cols-3 vgrid">
+        <div class="card"><div class="card-head"><h2>Devices</h2></div><div id="v-devices"></div></div>
+        <div class="card"><div class="card-head"><h2>Browsers</h2></div><div id="v-browsers"></div></div>
+        <div class="card"><div class="card-head"><h2>Operating systems</h2></div><div id="v-os"></div></div>
+      </div>
+      <div class="grid cols-2 vgrid">
+        <div class="card"><div class="card-head"><h2>Countries</h2></div><div id="v-countries"></div></div>
+        <div class="card"><div class="card-head"><h2>Cities</h2></div><div id="v-cities"></div></div>
+      </div>
+      <div class="card" style="margin-top:16px"><div class="card-head"><div><h2>Traffic by hour</h2><p>Page views by hour of day, India time (IST)</p></div></div><div class="chart" id="v-hours"></div></div>
+      <div class="card" style="margin-top:16px">
+        <div class="card-head"><div><h2>Recent sessions</h2><p>The last 30 visits and the pages each one saw</p></div><button class="btn ghost sm" id="v-export">Export CSV</button></div>
+        <div class="table-wrap"><table>
+          <thead><tr><th>When</th><th>Pages</th><th class="num">Views</th><th>From</th><th>Location</th><th>Device</th><th>Account</th></tr></thead>
+          <tbody id="v-sessions"></tbody>
+        </table></div>
+      </div>
+      <p class="hint" style="margin-top:12px">No IP addresses are stored. Unique visitors are counted with a daily-changing anonymous ID, and location comes from the hosting platform. Visits by admins and bots aren't counted.</p>
+    </section>
+
+    <section id="view-business">
     <div id="content">
       <div class="grid cols-4" id="kpis"></div>
 
@@ -83,6 +130,7 @@
       </div>
       <button class="btn ghost sm hidden" id="more" style="margin-top:12px">Load more</button>
     </div>
+    </section>
   </div>
 </main>
 
@@ -213,7 +261,102 @@ document.getElementById("search").addEventListener("input", e => {
 });
 document.getElementById("more").addEventListener("click", () => loadUsers(true));
 document.querySelectorAll("#range button").forEach(b => b.addEventListener("click", () => {
-  days = Number(b.dataset.days); store.set("hr-admin-days", days); loadOverview().catch(err => toast(err.message));
+  days = Number(b.dataset.days); store.set("hr-admin-days", days); loadView().catch(err => toast(err.message));
+}));
+
+// ─── Visitors view ────────────────────────────────────────────────────────────
+let view = location.hash === "#visitors" ? "visitors" : "business";
+let lastVisitors = null;
+const countryName = (() => {
+  let names;
+  try { names = new Intl.DisplayNames(["en"], { type: "region" }); } catch { names = null; }
+  return code => { try { return (names && code && names.of(code)) || code; } catch { return code; } };
+})();
+
+/** Ranked list: label, unique visitors (page views in the tooltip), and a bar relative to the top row. */
+function rankList(id, rows, labelOf = r => r.label, empty = "Nothing yet in this range") {
+  const el = document.getElementById(id);
+  if (!rows?.length) { el.innerHTML = `<p class="muted small">${empty}</p>`; return; }
+  const max = Math.max(...rows.map(r => r.visitors), 1);
+  el.innerHTML = rows.map(r => `<div class="rank" title="${fmt(r.visits)} page views">
+    <div class="rank-row"><span class="rank-label">${esc(labelOf(r))}</span><span class="num">${fmt(r.visitors)}</span></div>
+    <div class="rank-bar"><div style="width:${Math.max(2, (r.visitors / max) * 100).toFixed(1)}%"></div></div></div>`).join("");
+}
+
+async function loadVisitors() {
+  document.querySelectorAll("#range button").forEach(b => b.setAttribute("aria-selected", Number(b.dataset.days) === days));
+  const box = document.getElementById("view-visitors");
+  box.classList.add("loading");
+  const a = await api(`admin/analytics?days=${days}`);
+  box.classList.remove("loading");
+  lastVisitors = a;
+  const t = a.totals, c = a.compare, f = a.funnel;
+  const label = days === 365 ? "12 months" : `${days} days`;
+  const change = (now, before) => before ? `${now >= before ? "▲" : "▼"} ${Math.abs(Math.round((now - before) / before * 100))}% vs yesterday` : "";
+  document.getElementById("as-of").textContent = `Live from the database · updated ${new Date().toLocaleTimeString()}`;
+
+  document.getElementById("v-kpis").innerHTML = `
+    <div class="card tile hero"><div class="label">Unique visitors · last ${label}</div><div class="value">${compact(t.visitors)}</div>
+      <div class="delta">Today ${fmt(c.today_visitors)} <span class="${c.today_visitors >= c.yesterday_visitors ? "up" : "down"}">${change(c.today_visitors, c.yesterday_visitors)}</span></div></div>
+    <div class="card tile"><div class="label">Page views</div><div class="value">${compact(t.visits)}</div><div class="delta">Today ${fmt(c.today_visits)} · yesterday ${fmt(c.yesterday_visits)}</div></div>
+    <div class="card tile"><div class="label">Pages per visit</div><div class="value">${t.pages_per_session || "–"}</div><div class="delta">${fmt(t.sessions)} visits (browser sessions)</div></div>
+    <div class="card tile"><div class="label">Sign-up rate</div><div class="value">${pct(f.signups, f.visitors)}</div><div class="delta">${fmt(f.signups)} sign-ups from ${fmt(f.visitors)} visitors</div></div>`;
+
+  barChart(document.getElementById("v-daily"), a.daily.map(d => ({ x: shortDay(d.day), tip: `${date(d.day)} · ${fmt(d.visits)} page views`, y: d.visitors })),
+    { label: "Unique visitors per day", empty: "No visits recorded in this range" });
+
+  const steps = [["Visitors", f.visitors], ["Signed up", f.signups], ["Started checkout", f.checkouts], ["Paid", f.paid]];
+  document.getElementById("v-funnel").innerHTML = steps.map(([name, n], i) => `<div class="rank">
+    <div class="rank-row"><span class="rank-label">${name}</span><span class="num">${fmt(n)}${i ? ` <small>(${pct(n, steps[i - 1][1])} of previous step)</small>` : ""}</span></div>
+    <div class="rank-bar"><div style="width:${f.visitors ? Math.max(n ? 2 : 0, (n / f.visitors) * 100).toFixed(1) : 0}%"></div></div></div>`).join("");
+
+  rankList("v-pages", a.pages);
+  rankList("v-referrers", a.referrers, r => r.label || "Direct / unknown");
+  rankList("v-utm", a.utm, r => r.label, "No tagged campaign links yet. Add ?utm_source=… to links you share.");
+  rankList("v-devices", a.devices);
+  rankList("v-browsers", a.browsers);
+  rankList("v-os", a.os);
+  rankList("v-countries", a.countries, r => countryName(r.label), "Location appears once the site runs on Vercel or Cloudflare.");
+  rankList("v-cities", a.cities, r => { const [city, cc] = r.label.split(", "); return cc ? `${city}, ${countryName(cc)}` : city; });
+
+  barChart(document.getElementById("v-hours"), a.hours.map(h => ({ x: `${String(h.hour).padStart(2, "0")}:00`,
+    tip: `${String(h.hour).padStart(2, "0")}:00–${String((h.hour + 1) % 24).padStart(2, "0")}:00 IST`, y: h.visits })),
+    { label: "Page views by hour, IST", empty: "No visits recorded in this range" });
+
+  document.getElementById("v-sessions").innerHTML = a.sessions.map(s => `<tr>
+    <td>${ago(s.last_at)}</td>
+    <td class="pages-cell" title="${esc(s.pages)}">${esc(s.pages)}</td>
+    <td class="num">${s.views}</td>
+    <td>${esc(s.utm_source || s.referrer || "Direct")}</td>
+    <td>${esc([s.city, s.country && countryName(s.country)].filter(Boolean).join(", ") || "—")}</td>
+    <td>${esc([s.device, s.browser].filter(Boolean).join(" · "))}</td>
+    <td>${s.email ? esc(s.email) : "—"}</td></tr>`).join("") || `<tr><td colspan="7" class="muted">No visits yet in this range.</td></tr>`;
+}
+
+document.getElementById("v-export").addEventListener("click", () => {
+  const rows = lastVisitors?.sessions || [];
+  if (!rows.length) return toast("Nothing to export yet.");
+  const cell = v => `"${String(v ?? "").replace(/"/g, '""')}"`;
+  const csv = [["last_visit", "pages", "views", "referrer", "utm_source", "city", "country", "device", "browser", "account"],
+    ...rows.map(s => [s.last_at, s.pages, s.views, s.referrer, s.utm_source, s.city, s.country, s.device, s.browser, s.email])]
+    .map(r => r.map(cell).join(",")).join("\n");
+  const a = Object.assign(document.createElement("a"), { href: URL.createObjectURL(new Blob([csv], { type: "text/csv" })), download: `heyranks-sessions-${days}d.csv` });
+  a.click();
+  URL.revokeObjectURL(a.href);
+});
+
+function loadView() {
+  document.querySelectorAll("#views button").forEach(b => b.setAttribute("aria-selected", b.dataset.view === view));
+  document.getElementById("view-business").classList.toggle("hidden", view !== "business");
+  document.getElementById("view-visitors").classList.toggle("hidden", view !== "visitors");
+  document.getElementById("demo-wrap").classList.toggle("hidden", view !== "business");
+  document.getElementById("view-title").textContent = view === "visitors" ? "Visitor analytics" : "Business overview";
+  return view === "visitors" ? loadVisitors() : loadOverview();
+}
+document.querySelectorAll("#views button").forEach(b => b.addEventListener("click", () => {
+  view = b.dataset.view;
+  history.replaceState(null, "", view === "visitors" ? "#visitors" : location.pathname);
+  loadView().catch(err => toast(err.message));
 }));
 document.getElementById("demo").addEventListener("change", e => {
   demo = e.target.checked; store.set("hr-admin-demo", demo ? "1" : "0");
@@ -226,7 +369,7 @@ document.getElementById("logout").addEventListener("click", async () => {
 
 (async () => {
   try {
-    await loadOverview();
+    await loadView();
     document.getElementById("app").classList.remove("hidden");
     await loadUsers();
   } catch (err) {
