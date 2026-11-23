@@ -70,8 +70,9 @@ function makeScan(week, fixedAt, speed, broken = {}) {
   const checks = CHECKS.map(c => ({ ...c, pass: week >= (fixedAt[c.id] ?? 0) && !isBroken(c.id) }));
   checks.push({ id: "speed", label: `Mobile speed (${speed}/100)`, w: 10, pass: speed >= 70,
     fix: `Mobile speed is ${speed}/100. Compress images and remove unused scripts.` });
-  const total = checks.reduce((a, c) => a + c.w, 0);
-  const score = Math.round(checks.reduce((a, c) => a + (c.pass ? c.w : 0), 0) / total * 100);
+  const scored = checks.filter(c => c.id !== "speed"); // same rule as runScan: speed is shown, not scored
+  const total = scored.reduce((a, c) => a + c.w, 0);
+  const score = Math.round(scored.reduce((a, c) => a + (c.pass ? c.w : 0), 0) / total * 100);
   const passed = checks.filter(c => c.pass).map(c => c.label);
   const issues = checks.filter(c => !c.pass).sort((a, b) => b.w - a.w).map(({ id, label, w, fix }) => ({ id, label, w, fix }));
   return { score, speed, passed, issues };

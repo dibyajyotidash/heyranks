@@ -1,11 +1,12 @@
 // The pre-accounts schema (customers + weekly reports) must migrate without losing data.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { mkdtempSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 
-const dir = mkdtempSync(join(tmpdir(), "heyranks-mig-"));
+// Test databases live in the git-ignored .data folder: some system temp paths contain "#", which libSQL reads as a URL fragment.
+mkdirSync(".data", { recursive: true });
+const dir = mkdtempSync(join(process.cwd(), ".data", "test-mig-"));
 process.env.TURSO_DATABASE_URL = `file:${join(dir, "legacy.db").replace(/\\/g, "/")}`;
 const { d1 } = await import("../lib/db.js");
 const { ensureSchema } = await import("../lib/schema.js");

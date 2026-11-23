@@ -1,17 +1,22 @@
 # HeyRanks
 
-> HeyRanks sends small businesses a weekly, plain-English report on their Google SEO, their visibility in AI assistants (ChatGPT, Gemini, Claude, Perplexity, Copilot) and their digital marketing, with the 5 most important things to fix each week. It costs ₹849 one-time for 180 days (26 weekly reports), with a ₹4,149 lifetime founder plan for the first 500 customers.
+> HeyRanks checks a small business's website for the technical basics that Google and AI assistants rely on, explains each problem in plain English, and gives copy-paste code to fix it. Paid plans rescan every Monday and email a report with up to 5 prioritised fixes. It costs ₹849 one-time for 180 days (26 weekly reports), with a ₹4,149 Lifetime Founder plan limited to 500 customers.
 
 HeyRanks is a product of DexoSoft Solutions, based in Bhubaneswar, Odisha, India. It suits local businesses (clinics, restaurants, salons, real estate, coaching), e-commerce brands, freelancers and marketing agencies.
 
-## What each weekly report includes
-- Technical SEO audit: speed, mobile, meta tags, sitemaps, indexing
-- AI visibility: whether AI assistants mention the business for real customer questions
-- Competitor watch (3 competitors, 5 on lifetime)
-- Keyword, content and social media post ideas
-- Google Business Profile and review reply suggestions
-- Copy-paste fixes: Schema.org markup, llms.txt, meta tags
-- Same-day alerts for downtime, SSL expiry and ranking drops (email and WhatsApp)
+## What each scan checks
+- Search basics: HTTPS, page title and meta description length, main heading (H1), mobile viewport, XML sitemap
+- AI-crawler readiness: whether robots.txt lets GPTBot, OAI-SearchBot, ClaudeBot, Google-Extended and PerplexityBot read the site, and whether the site publishes llms.txt
+- Structured data (Schema.org) and social previews (Open Graph)
+- Mobile speed from Google PageSpeed Insights, shown alongside the score but not counted in it
+
+## What customers get
+- A score out of 100 and up to 5 prioritised fixes, each with copy-paste code
+- Weekly email reports on paid plans, plus monthly, quarterly, half-yearly and yearly summaries
+- A dashboard with score history and on-demand rescans
+
+## Not included yet
+- Checking what AI assistants say about a business, Google rankings, competitor tracking, Google Business Profile and reviews
 
 ## Key facts
 - Free scan available on the homepage

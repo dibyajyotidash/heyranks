@@ -34,7 +34,7 @@
       <h2>Add your first website</h2>
       <p>We'll scan it right away and show you exactly what to fix for Google and AI assistants.</p>
       <form class="row" id="first-site-form" style="justify-content:center;max-width:480px;margin:0 auto">
-        <input class="input" id="first-site" placeholder="yourbusiness.com" style="flex:1;min-width:200px" required>
+        <input class="input" id="first-site" aria-label="Your website address" placeholder="yourbusiness.com" style="flex:1;min-width:200px" required>
         <button class="btn primary">Scan my site →</button>
       </form>
     </div>
@@ -46,7 +46,7 @@
           <p class="muted small" id="site-meta"></p>
         </div>
         <div class="row">
-          <span id="scan-status" class="small muted"></span>
+          <span id="scan-status" class="small muted" role="status" aria-live="polite"></span>
           <button class="btn primary sm" id="rescan">Rescan now</button>
         </div>
       </div>
@@ -57,7 +57,7 @@
         <div class="card-head">
           <div>
             <h2>Score history</h2>
-            <p id="history-sub">Your visibility score at the end of each period. Click a row for the full report.</p>
+            <p id="history-sub">Your website score at the end of each period. Click a row for the full report.</p>
           </div>
           <div class="tabs" role="tablist" id="period-tabs">
             <button role="tab" data-type="weekly">Weekly</button>
@@ -107,7 +107,7 @@
           <form id="profile-form">
             <div class="field"><label for="p-name">Name</label><input id="p-name" autocomplete="name"></div>
             <div class="field"><label for="p-company">Business name</label><input id="p-company" autocomplete="organization"></div>
-            <div class="field"><label for="p-whatsapp">WhatsApp number</label><input id="p-whatsapp" type="tel" placeholder="+91 98765 43210"><div class="hint">With country code. Used for urgent alerts only.</div></div>
+            <div class="field"><label for="p-whatsapp">WhatsApp number</label><input id="p-whatsapp" type="tel" placeholder="+91 98765 43210"><div class="hint">With country code. Not used yet: reports come by email. We'll only use it for alerts if we add WhatsApp alerts and you turn them on.</div></div>
             <button class="btn primary sm">Save profile</button>
           </form>
         </div>
@@ -127,7 +127,7 @@
           <div class="card-head"><div><h2>Your sites</h2><p id="sites-limit"></p></div></div>
           <div id="sites-list"></div>
           <form id="add-site-form" class="row" style="margin-top:14px">
-            <input class="input" id="add-site" placeholder="anothersite.com" style="flex:1;min-width:180px">
+            <input class="input" id="add-site" aria-label="Another website address" placeholder="anothersite.com" style="flex:1;min-width:180px">
             <button class="btn sm">Add site</button>
           </form>
         </div>
@@ -255,7 +255,7 @@ function renderKpis(month) {
   const high = l.issues.filter(i => i.w >= 15).length;
   box.innerHTML = `
     <div class="card tile hero">
-      <div class="row between"><span class="label">Visibility score</span><span class="badge ${cls}">${scoreWord(l.score)}</span></div>
+      <div class="row between"><span class="label">Website score</span><span class="badge ${cls}">${scoreWord(l.score)}</span></div>
       <div class="value">${l.score}<small> /100</small></div>
       <div class="meter" role="img" aria-label="Score ${l.score} out of 100"><div style="width:${l.score}%;background:var(--${cls})"></div></div>
       <div class="delta">${deltaHtml(l.prev_score === null ? null : l.score - l.prev_score, "since last scan")}</div>
@@ -268,7 +268,7 @@ function renderKpis(month) {
     <div class="card tile">
       <div class="label">Mobile speed</div>
       <div class="value">${l.speed ?? "–"}${l.speed !== null ? "<small> /100</small>" : ""}</div>
-      <div class="delta">${l.speed === null ? "PageSpeed didn't answer this time" : l.speed >= 70 ? "Fast enough for Google" : "Slower than Google likes (70+)"}</div>
+      <div class="delta">${l.speed === null ? "Not measured this time (not part of the score)" : l.speed >= 70 ? "Fast enough for Google · shown, not scored" : "Slower than Google likes (70+) · shown, not scored"}</div>
     </div>
     <div class="card tile" id="month-tile">
       <div class="label">This month</div>
@@ -344,7 +344,7 @@ function renderHistory() {
   const asc = [...reports].reverse();
   lineChart(document.getElementById("history-chart"),
     asc.map(r => ({ x: shortLabel(period, r.period_start), tip: r.label + (r.status === "in_progress" ? " (so far)" : ""), y: r.score_end })),
-    { yMax: 100, ticks: [0, 25, 50, 75, 100], height: 230, label: `${TYPE_NAMES[period]} visibility score`, empty: "Your first report appears after a scan" });
+    { yMax: 100, ticks: [0, 25, 50, 75, 100], height: 230, label: `${TYPE_NAMES[period]} website score`, empty: "Your first report appears after a scan" });
 
   const rows = showAll ? reports : reports.slice(0, 8);
   document.getElementById("history-rows").innerHTML = rows.map(r => `

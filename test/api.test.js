@@ -1,12 +1,13 @@
 // End-to-end API tests against a throwaway SQLite file. No network: scans are inserted directly.
 import { test, before } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { mkdtempSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { createHmac } from "node:crypto";
 
-const dir = mkdtempSync(join(tmpdir(), "heyranks-test-"));
+// Test databases live in the git-ignored .data folder: some system temp paths contain "#", which libSQL reads as a URL fragment.
+mkdirSync(".data", { recursive: true });
+const dir = mkdtempSync(join(process.cwd(), ".data", "test-test-"));
 process.env.TURSO_DATABASE_URL = `file:${join(dir, "test.db").replace(/\\/g, "/")}`;
 const { handleApi } = await import("../lib/api.js");
 const { d1 } = await import("../lib/db.js");

@@ -1,18 +1,19 @@
 // Cashfree checkout end to end, against a fake Cashfree API (no network, no real keys).
 import { test, before } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { mkdtempSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { createHmac } from "node:crypto";
 
-const dir = mkdtempSync(join(tmpdir(), "heyranks-cf-"));
+// Test databases live in the git-ignored .data folder: some system temp paths contain "#", which libSQL reads as a URL fragment.
+mkdirSync(".data", { recursive: true });
+const dir = mkdtempSync(join(process.cwd(), ".data", "test-cf-"));
 process.env.TURSO_DATABASE_URL = `file:${join(dir, "cf.db").replace(/\\/g, "/")}`;
 const { handleApi } = await import("../lib/api.js");
 const { d1 } = await import("../lib/db.js");
 
 const env = { ...process.env, DB: d1(process.env), CASHFREE_APP_ID: "TEST_APP", CASHFREE_SECRET_KEY: "TEST_SECRET",
-  CASHFREE_ENV: "sandbox", CASHFREE_WEBHOOK_SECRET: "whsec_test" };
+  CASHFREE_ENV: "sandbox", CASHFREE_WEBHOOK_SECRET: "whsec_test", SITE_URL: "https://heyranks.test" };
 const HOST = "heyranks.test";
 
 // ─── fake Cashfree ────────────────────────────────────────────────────────────
@@ -143,12 +144,28 @@ test("a webhook can't be believed over Cashfree's API", async () => {
   assert.equal((await call("POST", "checkout", { cookie: ravi, body: { plan: "180day" } })).status, 400);
 });
 
-test("a full refund takes the payment out of revenue", async () => {
+test("a partial refund leaves access alone", async () => {
+  await signedWebhook({ type: "REFUND_STATUS_WEBHOOK", data: { refund: { order_id: orderId, refund_status: "SUCCESS", refund_amount: 200 } } });
+  assert.equal((await env.DB.prepare("SELECT status FROM payments WHERE provider_ref = ?").bind(orderId).first()).status, "paid");
+  assert.equal((await call("GET", "me", { cookie: priya })).data.user.plan_active, "180day");
+});
+
+test("a full refund takes the payment out of revenue and the plan away", async () => {
   await signedWebhook({ type: "REFUND_STATUS_WEBHOOK", data: { refund: { order_id: orderId, refund_status: "SUCCESS", refund_amount: 849 } } });
   const row = await env.DB.prepare("SELECT status FROM payments WHERE provider_ref = ?").bind(orderId).first();
   assert.equal(row.status, "refunded");
   const paid = await env.DB.prepare("SELECT SUM(amount) AS n FROM payments WHERE status = 'paid'").first();
   assert.equal(paid.n, 414900, "only Ravi's lifetime payment counts");
+  assert.equal((await call("GET", "me", { cookie: priya })).data.user.plan_active, "free", "the refunded 180 days are gone");
+  // Replaying the same refund webhook changes nothing.
+  await signedWebhook({ type: "REFUND_STATUS_WEBHOOK", data: { refund: { order_id: orderId, refund_status: "SUCCESS", refund_amount: 849 } } });
+  assert.equal((await call("GET", "me", { cookie: priya })).data.user.plan_active, "free");
+});
+
+test("a full Lifetime refund returns the account to Free", async () => {
+  const lifetimeOrder = (await env.DB.prepare("SELECT provider_ref FROM payments WHERE plan = 'lifetime' AND status = 'paid'").first()).provider_ref;
+  await signedWebhook({ type: "REFUND_STATUS_WEBHOOK", data: { refund: { order_id: lifetimeOrder, refund_status: "SUCCESS", refund_amount: 4149 } } });
+  assert.equal((await call("GET", "me", { cookie: ravi })).data.user.plan_active, "free");
 });
 
 test("the daily job settles a paid order whose webhook never arrived, once", async () => {
