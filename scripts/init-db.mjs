@@ -1,14 +1,13 @@
-// Creates the HeyRanks tables in Turso. Run once:
-//   TURSO_DATABASE_URL=... TURSO_AUTH_TOKEN=... npm run db:init
-// (or `vercel env pull .env.local` first, then `node --env-file=.env.local scripts/init-db.mjs`)
-import { readFileSync } from "node:fs";
-import { createClient } from "@libsql/client";
+// Creates / migrates the HeyRanks tables. Optional: the API also does this on its first request.
+//   node --env-file=.env.local scripts/init-db.mjs        (Turso, after `vercel env pull .env.local`)
+//   TURSO_DATABASE_URL=file:.data/dev.db npm run db:init   (local file)
+import { d1 } from "../lib/db.js";
+import { ensureSchema, SCHEMA_VERSION } from "../lib/schema.js";
+import { rebuildAllReports } from "../lib/reports.js";
 
-const url = process.env.TURSO_DATABASE_URL;
-if (!url) { console.error("Set TURSO_DATABASE_URL (and TURSO_AUTH_TOKEN) first."); process.exit(1); }
+const db = d1(process.env);
+if (!db) { console.error("Set TURSO_DATABASE_URL (and TURSO_AUTH_TOKEN) first."); process.exit(1); }
 
-const db = createClient({ url, authToken: process.env.TURSO_AUTH_TOKEN });
-const sql = readFileSync(new URL("../schema.sql", import.meta.url), "utf8");
-await db.executeMultiple(sql);
-const { rows } = await db.execute("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name");
-console.log("Tables:", rows.map(r => r.name).join(", "));
+await ensureSchema(db, rebuildAllReports);
+const { results } = await db.prepare("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name").all();
+console.log(`Schema v${SCHEMA_VERSION}. Tables: ${results.map(r => r.name).join(", ")}`);

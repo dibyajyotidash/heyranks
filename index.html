@@ -50,7 +50,15 @@ nav .wrap{display:flex;align-items:center;justify-content:space-between;height:6
 .nav-links{display:flex;gap:28px;align-items:center;font-size:.92rem;color:var(--ink2)}
 .nav-links a:hover{color:var(--ink)}
 .nav-links .btn{padding:9px 18px;font-size:.88rem}
-@media(max-width:780px){.nav-links a:not(.btn){display:none}}
+@media(max-width:780px){.nav-links a:not(.btn):not(.keep){display:none}}
+
+/* live counters (real numbers from /api/stats) */
+.live{background:#16212d;color:#cbd5e1;font-size:.9rem;padding:12px 0}
+.live .wrap{display:flex;gap:10px 26px;justify-content:center;flex-wrap:wrap;align-items:center}
+.live b{color:#fff;font-variant-numeric:tabular-nums}
+.live .dot{display:inline-flex;align-items:center;gap:8px;color:var(--mint);font-weight:600}
+.live .dot::before{content:"";width:8px;height:8px;border-radius:50%;background:var(--mint);animation:pulse 2s infinite}
+@keyframes pulse{50%{opacity:.35}}
 
 /* hero */
 .hero{padding:80px 0 64px;text-align:center}
@@ -219,6 +227,7 @@ footer a:hover{color:var(--ink)}
       <a href="#check">Free check</a>
       <a href="#pricing">Pricing</a>
       <a href="#faq">FAQ</a>
+      <a href="/login" class="keep">Log in</a>
       <a href="/signup?plan=180day" class="btn primary">Start for $10</a>
     </div>
   </div>
@@ -264,6 +273,16 @@ footer a:hover{color:var(--ink)}
     <div><b>$0.38</b><span>per report, less than a cup of tea</span></div>
     <div><b>130+</b><span>action tips delivered over 180 days</span></div>
     <div><b>6</b><span>AI & search engines tracked weekly</span></div>
+  </div>
+</div>
+<!-- Real counts from the database. Stays hidden until there's enough activity to be worth showing. -->
+<div class="live" id="live" hidden>
+  <div class="wrap">
+    <span class="dot">Live on HeyRanks</span>
+    <span><b id="live-sites">0</b> sites tracked</span>
+    <span><b id="live-scans">0</b> scans run</span>
+    <span><b id="live-checks">0</b> checks done</span>
+    <span><b id="live-issues">0</b> issues found</span>
   </div>
 </div>
 
@@ -511,12 +530,27 @@ document.getElementById('scan').addEventListener('submit',async e=>{
     out.innerHTML=`<div class="scan-score"><b style="color:${col}">${d.score}</b><span>/100 free scan score</span></div>
       <div class="scan-sub">${d.passed.length} checks passed · ${d.top_issues.length+d.more_issues} need work</div>
       ${d.top_issues.map((x,i)=>`<div class="task"><i class="${i?'p2':'p1'}">${i+1}</i><div><b>${esc(x.label)}</b><br>${esc(x.fix)}</div></div>`).join('')}
-      ${d.more_issues?`<div class="scan-sub" style="margin-top:10px">+ ${d.more_issues} more issues, AI visibility tests and competitor checks in your weekly report.</div>`:''}`;
+      ${d.more_issues?`<div class="scan-sub" style="margin-top:10px">+ ${d.more_issues} more issues, AI visibility tests and competitor checks in your weekly report.</div>`:''}
+      <div class="scan-sub" style="margin-top:12px"><a href="/signup?website=${encodeURIComponent(d.site)}" style="color:var(--accent);font-weight:600">Create a free account</a> to save this scan, see every fix and track your score over time.</div>`;
   }catch(err){
     // No backend (e.g. preview) or scan error: show what the report covers
     out.innerHTML=(err.message&&err.message!=='Failed to fetch'&&!/JSON/.test(err.message)?`<div class="scan-sub" style="color:#dc2626">${esc(err.message)}</div>`:'')+document.getElementById('fb').innerHTML;
   }finally{btn.disabled=false}
 });
+
+// Anonymous visit counter (no cookies; the server only keeps daily totals).
+fetch('/api/track',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({path:location.pathname}),keepalive:true}).catch(()=>{});
+
+// Live counters: real totals, shown only once there's enough activity.
+fetch('/api/stats').then(r=>r.ok?r.json():null).then(s=>{
+  if(!s||s.scans<25)return;
+  const n=v=>Number(v).toLocaleString('en-US');
+  document.getElementById('live-sites').textContent=n(s.sites);
+  document.getElementById('live-scans').textContent=n(s.scans);
+  document.getElementById('live-checks').textContent=n(s.checks);
+  document.getElementById('live-issues').textContent=n(s.issues);
+  document.getElementById('live').hidden=false;
+}).catch(()=>{});
 
 const boxes=[...document.querySelectorAll('#qs input')];
 boxes.forEach(b=>b.addEventListener('change',()=>{

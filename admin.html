@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Admin — HeyRanks</title>
+<meta name="robots" content="noindex">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='24' height='24' rx='6' fill='%230f1720'/%3E%3Cpath d='M4 18 L9 12 L13 15 L20 6' stroke='%23d9f99d' stroke-width='2.6' fill='none' stroke-linecap='round'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/assets/app.css">
+<script src="/assets/app.js"></script>
+<style>
+  .filters { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin-bottom: 16px; }
+  .filters label.check { display: inline-flex; gap: 8px; align-items: center; font-size: .88rem; color: var(--ink-2); cursor: pointer; }
+  .loading { opacity: .5; transition: opacity .2s; }
+  .manage { background: var(--surface-2); }
+  .manage td { white-space: normal; }
+  .manage .row > * { flex: none; }
+  .manage select, .manage input { padding: 7px 10px; border: 1.5px solid var(--line); border-radius: 8px; background: var(--surface); }
+  .user-cell b { display: block; font-weight: 600; }
+  .user-cell span { color: var(--muted); font-size: .8rem; }
+</style>
+</head>
+<body>
+<header class="topbar">
+  <div class="in">
+    <a href="/" class="logo"><span class="logo-mark"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M4 18 L9 12 L13 15 L20 6" stroke="#d9f99d" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg></span>HeyRanks <span class="badge" style="background:var(--mint);color:#0f1720">Admin</span></a>
+    <span class="spacer"></span>
+    <a href="/dashboard" class="link">My dashboard</a>
+    <button class="link hide-sm" id="logout">Log out</button>
+  </div>
+</header>
+
+<main class="page">
+  <div id="denied" class="card empty-state hidden"><h2>Admins only</h2><p>Your account doesn't have admin access. Admins are set with ADMIN_EMAILS (after confirming the email) or by another admin.</p><a class="btn" href="/dashboard">Go to my dashboard</a></div>
+
+  <div id="app" class="hidden">
+    <div class="page-head">
+      <div><h1>Business overview</h1><p class="muted small" id="as-of">Live from the database</p></div>
+    </div>
+
+    <div class="filters">
+      <div class="tabs" role="tablist" id="range">
+        <button role="tab" data-days="7">7 days</button>
+        <button role="tab" data-days="30">30 days</button>
+        <button role="tab" data-days="90">90 days</button>
+        <button role="tab" data-days="365">12 months</button>
+      </div>
+      <label class="check"><input type="checkbox" id="demo"> Include demo data</label>
+    </div>
+
+    <div id="content">
+      <div class="grid cols-4" id="kpis"></div>
+
+      <div class="grid cols-3" style="margin-top:16px">
+        <div class="card"><div class="card-head"><div><h2>Visitors</h2><p>Unique visitors per day</p></div></div><div class="chart" id="c-visitors"></div></div>
+        <div class="card"><div class="card-head"><div><h2>Signups</h2><p>New accounts per day</p></div></div><div class="chart" id="c-signups"></div></div>
+        <div class="card"><div class="card-head"><div><h2>Revenue</h2><p id="rev-sub">Payments per day</p></div></div><div class="chart" id="c-revenue"></div></div>
+      </div>
+
+      <div class="grid cols-2" style="margin-top:16px;align-items:start">
+        <div class="card"><div class="card-head"><h2>Top pages</h2></div>
+          <div class="table-wrap"><table><thead><tr><th>Page</th><th class="num">Visitors</th><th class="num">Views</th></tr></thead><tbody id="pages"></tbody></table></div>
+        </div>
+        <div class="card"><div class="card-head"><div><h2>Customers by plan</h2><p>Plans active right now</p></div></div>
+          <div class="table-wrap"><table><thead><tr><th>Plan</th><th class="num">Users</th><th class="num">Share</th></tr></thead><tbody id="plans"></tbody></table></div>
+          <div id="revenue-list" style="margin-top:14px"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card" style="margin-top:16px">
+      <div class="card-head">
+        <div><h2>Users</h2><p id="user-count"></p></div>
+        <input class="input" id="search" placeholder="Search name, email or business" style="max-width:300px">
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>User</th><th>Plan</th><th>Ends</th><th class="num">Sites</th><th class="num">Score</th><th class="num">Paid</th><th>Joined</th><th>Last login</th><th></th></tr></thead>
+          <tbody id="users"></tbody>
+        </table>
+      </div>
+      <button class="btn ghost sm hidden" id="more" style="margin-top:12px">Load more</button>
+    </div>
+  </div>
+</main>
+
+<script>
+const { api, esc, fmt, compact, money, date, ago, toast, barChart } = HR;
+const store = { get(k) { try { return localStorage.getItem(k); } catch { return null; } }, set(k, v) { try { localStorage.setItem(k, v); } catch {} } };
+const PLAN_LABEL = { free: "Free", "180day": "180-Day Pass", lifetime: "Lifetime" };
+let days = Number(store.get("hr-admin-days")) || 30, demo = store.get("hr-admin-demo") === "1";
+let users = [], total = 0, query = "", openRow = null;
+
+const pct = (a, b) => (b ? `${((a / b) * 100).toFixed(1)}%` : "–");
+const shortDay = d => date(d, { day: "numeric", month: "short" });
+
+async function loadOverview() {
+  document.querySelectorAll("#range button").forEach(b => b.setAttribute("aria-selected", Number(b.dataset.days) === days));
+  document.getElementById("demo").checked = demo;
+  const content = document.getElementById("content");
+  content.classList.add("loading");
+  const o = await api(`admin/overview?days=${days}&demo=${demo ? 1 : 0}`);
+  content.classList.remove("loading");
+  const k = o.kpis, cur = o.currency;
+  const rev = o.revenue.find(r => r.currency === cur) || { total: 0, recent: 0, n: 0 };
+  const signups = o.series.reduce((a, d) => a + d.signups, 0);
+  const label = days === 365 ? "12 months" : `${days} days`;
+  document.getElementById("as-of").textContent = `Live from the database · updated ${new Date().toLocaleTimeString()}${demo ? " · including demo data" : ""}`;
+
+  document.getElementById("kpis").innerHTML = `
+    <div class="card tile hero"><div class="label">Revenue · last ${label}</div><div class="value">${money(rev.recent, cur)}</div><div class="delta">${money(rev.total, cur)} all time · ${fmt(rev.n)} payments</div></div>
+    <div class="card tile"><div class="label">Paying customers</div><div class="value">${fmt(k.paid_active)}</div><div class="delta">${pct(k.paid_active, k.users)} of ${fmt(k.users)} users</div></div>
+    <div class="card tile"><div class="label">New users · last ${label}</div><div class="value">${fmt(k.users_recent)}</div><div class="delta">${pct(signups, k.visitors)} of visitors signed up</div></div>
+    <div class="card tile"><div class="label">Site visitors · last ${label}</div><div class="value">${compact(k.visitors)}</div><div class="delta">${compact(k.visits)} page views · ${fmt(k.scans)} scans · ${fmt(k.reports_sent)} reports emailed</div></div>`;
+
+  const pts = key => o.series.map(d => ({ x: shortDay(d.day), tip: date(d.day), y: d[key] }));
+  barChart(document.getElementById("c-visitors"), pts("visitors"), { label: "Unique visitors per day", empty: "No visits recorded yet" });
+  barChart(document.getElementById("c-signups"), pts("signups"), { label: "Signups per day", empty: "No signups in this range" });
+  document.getElementById("rev-sub").textContent = `Payments per day (${cur})`;
+  barChart(document.getElementById("c-revenue"), pts("revenue"), { label: `Revenue per day in ${cur}`, format: v => money(v, cur), empty: "No payments in this range" });
+
+  document.getElementById("pages").innerHTML = o.pages.map(p => `<tr><td>${esc(p.path)}</td><td class="num">${fmt(p.visitors)}</td><td class="num">${fmt(p.views)}</td></tr>`).join("")
+    || `<tr><td colspan="3" class="muted">No visits yet. Visits are counted on the public pages.</td></tr>`;
+  const planTotal = o.plan_mix.reduce((a, p) => a + p.n, 0);
+  document.getElementById("plans").innerHTML = ["lifetime", "180day", "free"].map(p => {
+    const n = o.plan_mix.find(x => x.plan === p)?.n || 0;
+    return `<tr><td>${PLAN_LABEL[p]}</td><td class="num">${fmt(n)}</td><td class="num">${pct(n, planTotal)}</td></tr>`;
+  }).join("");
+  const other = o.revenue.filter(r => r.currency !== cur);
+  document.getElementById("revenue-list").innerHTML = other.length
+    ? `<p class="small muted">Other currencies (all time): ${other.map(r => `${money(r.total, r.currency)} (${r.n})`).join(" · ")}</p>` : "";
+}
+
+async function loadUsers(append = false) {
+  const offset = append ? users.length : 0;
+  const r = await api(`admin/users?q=${encodeURIComponent(query)}&offset=${offset}&limit=25&demo=${demo ? 1 : 0}`);
+  users = append ? users.concat(r.users) : r.users;
+  total = r.total;
+  renderUsers();
+}
+
+function planBadge(u) {
+  const cls = u.plan_active === "free" ? "" : "good";
+  const expired = u.plan === "180day" && u.plan_active === "free";
+  return `<span class="badge ${cls}">${PLAN_LABEL[u.plan_active]}</span>${expired ? ` <span class="badge warn">expired</span>` : ""}`;
+}
+
+function renderUsers() {
+  document.getElementById("user-count").textContent = `${fmt(total)} user${total === 1 ? "" : "s"}${query ? ` matching “${query}”` : ""}`;
+  document.getElementById("users").innerHTML = users.map(u => `
+    <tr>
+      <td class="user-cell"><b>${esc(u.name || "—")}${u.role === "admin" ? ` <span class="badge">admin</span>` : ""}${u.status === "disabled" ? ` <span class="badge bad">disabled</span>` : ""}</b><span>${esc(u.email)}${u.email_verified ? "" : " · unconfirmed"}</span></td>
+      <td>${planBadge(u)}</td>
+      <td>${u.plan === "180day" ? date(u.plan_expires_at) : u.plan === "lifetime" ? "never" : "—"}</td>
+      <td class="num">${u.sites}</td>
+      <td class="num">${u.last_score ?? "—"}</td>
+      <td class="num">${u.paid_total ? money(u.paid_total) : "—"}</td>
+      <td>${date(u.created_at)}</td>
+      <td>${ago(u.last_login_at)}</td>
+      <td><button class="btn ghost sm" data-manage="${esc(u.id)}">Manage</button></td>
+    </tr>
+    ${openRow === u.id ? manageRow(u) : ""}`).join("") || `<tr><td colspan="9" class="muted">No users found.</td></tr>`;
+  document.getElementById("more").classList.toggle("hidden", users.length >= total);
+}
+
+function manageRow(u) {
+  return `<tr class="manage"><td colspan="9">
+    <form class="row" data-form="${esc(u.id)}" style="gap:14px;align-items:flex-end">
+      <div><div class="small muted">Plan</div>
+        <select name="plan"><option value="">Keep ${PLAN_LABEL[u.plan_active]}</option><option value="180day">Grant / extend 180 days</option><option value="lifetime">Lifetime</option><option value="free">Downgrade to Free</option></select></div>
+      <div><div class="small muted">Payment received (optional)</div>
+        <div class="row" style="gap:6px"><input name="amount" type="number" min="0" step="0.01" placeholder="10.00" style="width:100px"><input name="currency" value="USD" maxlength="3" style="width:64px"></div></div>
+      <div><div class="small muted">Account</div>
+        <select name="status"><option value="">${u.status === "active" ? "Active" : "Disabled"}</option>${u.status === "active" ? `<option value="disabled">Disable (logs out)</option>` : `<option value="active">Re-enable</option>`}</select></div>
+      <div><div class="small muted">Role</div>
+        <select name="role"><option value="">${u.role}</option>${u.role !== "admin" ? `<option value="admin">Make admin</option>` : `<option value="user">Remove admin</option>`}</select></div>
+      <button class="btn primary sm">Save</button>
+      <button type="button" class="btn ghost sm" data-cancel>Cancel</button>
+    </form>
+  </td></tr>`;
+}
+
+document.getElementById("users").addEventListener("click", e => {
+  const m = e.target.closest("[data-manage]");
+  if (m) { openRow = openRow === m.dataset.manage ? null : m.dataset.manage; renderUsers(); }
+  if (e.target.closest("[data-cancel]")) { openRow = null; renderUsers(); }
+});
+document.getElementById("users").addEventListener("submit", async e => {
+  e.preventDefault();
+  const f = new FormData(e.target), id = e.target.dataset.form, body = {};
+  if (f.get("plan")) body.plan = f.get("plan");
+  if (f.get("status")) body.status = f.get("status");
+  if (f.get("role")) body.role = f.get("role");
+  if (Number(f.get("amount")) > 0) {
+    if (!body.plan) return toast("Pick the plan this payment is for.");
+    body.payment = { amount: Number(f.get("amount")), currency: f.get("currency") };
+  }
+  if (!Object.keys(body).length) return toast("Nothing to change.");
+  try {
+    await api(`admin/users/${id}`, { method: "PATCH", body });
+    toast("Saved.");
+    openRow = null;
+    await Promise.all([loadUsers(), loadOverview()]);
+  } catch (err) { toast(err.message); }
+});
+
+let searchTimer;
+document.getElementById("search").addEventListener("input", e => {
+  clearTimeout(searchTimer);
+  searchTimer = setTimeout(() => { query = e.target.value.trim(); loadUsers(); }, 250);
+});
+document.getElementById("more").addEventListener("click", () => loadUsers(true));
+document.querySelectorAll("#range button").forEach(b => b.addEventListener("click", () => {
+  days = Number(b.dataset.days); store.set("hr-admin-days", days); loadOverview().catch(err => toast(err.message));
+}));
+document.getElementById("demo").addEventListener("change", e => {
+  demo = e.target.checked; store.set("hr-admin-demo", demo ? "1" : "0");
+  Promise.all([loadOverview(), loadUsers()]).catch(err => toast(err.message));
+});
+document.getElementById("logout").addEventListener("click", async () => {
+  await api("auth/logout", { method: "POST", body: {} }).catch(() => {});
+  location.replace("/");
+});
+
+(async () => {
+  try {
+    await loadOverview();
+    document.getElementById("app").classList.remove("hidden");
+    await loadUsers();
+  } catch (err) {
+    if (err.status === 403) document.getElementById("denied").classList.remove("hidden");
+    else if (err.message !== "Please log in.") toast(err.message);
+  }
+})();
+</script>
+</body>
+</html>
