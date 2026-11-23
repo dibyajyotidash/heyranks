@@ -577,9 +577,6 @@ document.getElementById('scan').addEventListener('submit',async e=>{
   }finally{btn.disabled=false}
 });
 
-// Anonymous visit counter (no cookies; the server only keeps daily totals).
-fetch('/api/track',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({path:location.pathname}),keepalive:true}).catch(()=>{});
-
 // Live counters: real totals, shown only once there's enough activity.
 fetch('/api/stats').then(r=>r.ok?r.json():null).then(s=>{
   if(!s||s.scans<25)return;
@@ -607,5 +604,6 @@ boxes.forEach(b=>b.addEventListener('change',()=>{
   document.getElementById('vbtn').style.display=s<100&&boxes.some(b=>b.checked)?'inline-flex':'none';
 }));
 </script>
+<script src="/assets/track.js" defer></script>
 </body>
 </html>
