@@ -32,11 +32,15 @@ reset links are printed in the terminal instead.
 | `lib/reports.js` | Weekly → yearly period roll-ups |
 | `lib/auth.js` | Password hashing, sessions, login tokens, rate limits |
 | `lib/cashfree.js` | Cashfree Orders API client and webhook signature check |
+| `lib/plans.js` | Plans, prices and granting a plan (shared by the API and the daily job) |
+| `lib/analytics.js` | Visitor analytics: records page views, builds the Admin → Visitors report |
+| `assets/track.js` | Page-view tracker included on the public pages (no cookies) |
 | `lib/core.js` | Site scanner, email templates, daily job |
 | `lib/db.js` | Turso/libSQL adapter with the D1 API (Vercel + local) |
 | `_worker.js` / `api/index.js` | Cloudflare / Vercel entry points (both call `lib/api.js`) |
 | `scripts/dev.mjs` | Local server |
 | `scripts/seed-demo.mjs` | Demo data (tagged, never counted in real stats) |
+| `scripts/make-admin.mjs` | Makes an existing account an admin directly in the database |
 
 ## Data model
 
@@ -86,6 +90,7 @@ webhook from another provider, or by an admin (Admin → Users → Manage).
 | `PAYMENT_LINK_180DAY`, `PAYMENT_LINK_LIFETIME` | optional | Fallback payment links, used only when Cashfree isn't configured |
 | `STRIPE_SECRET` / `RAZORPAY_SECRET` / `LEMONSQUEEZY_SECRET` | optional | Signing secrets for other providers' webhooks. Unsigned webhooks are rejected |
 | `CURRENCY` | optional | Main currency in the admin revenue view (default `INR`) |
+| `ANALYTICS_SALT` | optional | Any random string, mixed into the daily anonymous visitor ID |
 | `PSI_KEY` | recommended | Google PageSpeed Insights API key. Without it Google's shared quota usually refuses, so scans have no speed score (`speed: null`) |
 
 ## Deploy on Vercel (+ Turso)
@@ -102,6 +107,38 @@ summaries once those periods end. It also settles unpaid Cashfree orders and cle
 
 After deploying, check that query strings reach the API through the `/api/:route*` rewrite (for example,
 `/dashboard` → Monthly tab shows monthly rows).
+
+## Admin access
+
+Admins see the business overview, the Visitors tab and user management at `/admin`. There are two ways in.
+
+1. **With email working** (`RESEND_API_KEY` set): add the address to `ADMIN_EMAILS` in Vercel (for example
+   `ADMIN_EMAILS=you@example.com`) and redeploy. Sign up with that address, then log in once with
+   **“Email me a login link”**. The login link proves you own the address, which unlocks admin.
+2. **Without email:** sign up at `/signup`, then copy `TURSO_DATABASE_URL` and `TURSO_AUTH_TOKEN` from Vercel
+   into `.env.local` (it's git-ignored). Run `node --env-file=.env.local scripts/make-admin.mjs you@example.com`.
+
+After that, an admin can promote others from Admin → Users → Manage.
+
+## Visitor analytics (Admin → Visitors)
+
+Modelled on the market_forecast_web analytics page. It shows:
+- unique visitors, page views, pages per visit and sign-up rate;
+- daily traffic and a visitor → sign-up → checkout → paid funnel;
+- top pages, referrers and UTM campaigns;
+- devices, browsers and operating systems;
+- countries, cities and traffic by hour (IST);
+- recent sessions, with CSV export.
+
+Unlike market_forecast_web, it's private by design:
+- **No IP address is stored.** Unique visitors use a hash of IP + browser that changes every day.
+- **No third-party lookup.** Location comes from Vercel/Cloudflare geo headers, not an IP lookup service.
+- **Minimal referrers.** Only the referring host name is kept, not the full URL.
+- **No cookies.**
+- **Limited retention.** Rows are deleted after about 13 months.
+
+Bots, headless browsers and admins aren't counted. The public pages load `assets/track.js`; the
+dashboard and admin pages aren't tracked.
 
 ## Deploy on Cloudflare Pages (+ D1)
 

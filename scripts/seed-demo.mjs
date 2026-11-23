@@ -43,6 +43,7 @@ for (const id of demoIds) {
   await run("DELETE FROM users WHERE id = ?", id);
 }
 await run("DELETE FROM payments WHERE provider = 'demo'");
+await run("DELETE FROM visits WHERE session_id LIKE 'demo%'");
 console.log(`Removed ${demoIds.length} demo users.`);
 if (process.argv.includes("--remove")) process.exit(0);
 
@@ -150,5 +151,45 @@ if (local) {
     }
   }
   console.log("  90 days of page visits (local only)");
+
+  // Detailed visits for Admin → Visitors. Session ids start with "demo" so a re-seed replaces them.
+  const pick = list => { let r = rand() * list.reduce((a, [, w]) => a + w, 0); for (const [v, w] of list) if ((r -= w) <= 0) return v; return list[0][0]; };
+  const REFERRERS = [[null, 40], ["google.com", 25], ["chatgpt.com", 8], ["instagram.com", 8], ["linkedin.com", 6], ["facebook.com", 5], ["perplexity.ai", 4], ["bing.com", 4]];
+  const UTM = [[null, 85], [["instagram", "social", "launch"], 6], [["google", "cpc", "seo-reports"], 5], [["whatsapp", "share", null], 4]];
+  const DEVICES = [[["Mobile", "Chrome", "Android", 412], 44], [["Mobile", "Safari", "iOS", 390], 18], [["Desktop", "Chrome", "Windows", 1536], 22],
+                   [["Desktop", "Edge", "Windows", 1920], 5], [["Desktop", "Safari", "macOS", 1440], 6], [["Tablet", "Safari", "iOS", 820], 5]];
+  const PLACES = [[["IN", "OD", "Bhubaneswar", "Asia/Kolkata"], 18], [["IN", "MH", "Mumbai", "Asia/Kolkata"], 16], [["IN", "KA", "Bengaluru", "Asia/Kolkata"], 15],
+                  [["IN", "DL", "Delhi", "Asia/Kolkata"], 12], [["IN", "TG", "Hyderabad", "Asia/Kolkata"], 8], [["IN", "WB", "Kolkata", "Asia/Kolkata"], 6],
+                  [["IN", "MH", "Pune", "Asia/Kolkata"], 5], [["US", "CA", "San Francisco", "America/Los_Angeles"], 5], [["AE", "DU", "Dubai", "Asia/Dubai"], 5],
+                  [["GB", "ENG", "London", "Europe/London"], 4], [["SG", null, "Singapore", "Asia/Singapore"], 3], [["AU", "NSW", "Sydney", "Australia/Sydney"], 3]];
+  const HOURS_IST = [1, 1, 1, 1, 1, 2, 3, 5, 7, 9, 11, 12, 12, 11, 10, 9, 9, 10, 12, 14, 14, 11, 7, 3].map((w, h) => [h, w]);
+  const JOURNEYS = [[["/"], 50], [["/", "/signup"], 18], [["/", "/login"], 8], [["/", "/privacy"], 4], [["/signup"], 6], [["/", "/signup", "/login"], 4], [["/login"], 10]];
+  const rows = [];
+  for (let d = 89; d >= 0; d--) {
+    const sessionsToday = Math.round((30 + (89 - d) * 1.1) * (0.8 + rand() * 0.4));
+    for (let s = 0; s < sessionsToday; s++) {
+      const [device, browser, os, width] = pick(DEVICES);
+      const [country, region, city, tz] = pick(PLACES);
+      const utm = pick(UTM);
+      const referrer = utm?.[0] === "instagram" ? "instagram.com" : pick(REFERRERS);
+      const sid = "demo" + Math.floor(rand() * 1e12).toString(36) + s;
+      const visitor = Math.floor(rand() * 2 ** 52).toString(16).padStart(16, "0");
+      // A time on that day (UTC) whose India-time hour follows a typical daily curve.
+      let t = Date.parse(iso(now - d * DAY).slice(0, 10) + "T00:00:00Z") + (pick(HOURS_IST) * 60 - 330 + rand() * 50) * 60e3;
+      if (t > now) t = now - rand() * 3600e3;
+      pick(JOURNEYS).forEach((path, i) => {
+        const at = new Date(t + i * (20 + rand() * 90) * 1000).toISOString();
+        rows.push([at, at.slice(0, 10), sid, visitor, path, i ? null : referrer, i ? null : utm?.[0] ?? null, i ? null : utm?.[1] ?? null,
+          i ? null : utm?.[2] ?? null, country, region, city, device, browser, os, width, country === "IN" ? "en-IN" : "en-US", tz]);
+      });
+    }
+  }
+  for (let i = 0; i < rows.length; i += 100) {
+    const chunk = rows.slice(i, i + 100);
+    await db.prepare(`INSERT INTO visits (at, day, session_id, visitor, path, referrer, utm_source, utm_medium, utm_campaign,
+      country, region, city, device, browser, os, screen_width, language, timezone) VALUES ${chunk.map(() => "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)").join(", ")}`)
+      .bind(...chunk.flat()).run();
+  }
+  console.log(`  ${rows.length} detailed visits for Admin → Visitors (local only)`);
 }
 console.log("Done.");

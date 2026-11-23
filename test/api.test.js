@@ -192,7 +192,7 @@ test("password reset logs out other sessions", async () => {
 });
 
 test("visits are counted once per visitor per day", async () => {
-  const hit = ip => call("POST", "track", { body: { path: "/pricing" }, headers: { "x-real-ip": ip } });
+  const hit = ip => call("POST", "track", { body: { path: "/pricing" }, headers: { "x-real-ip": ip, "user-agent": "Mozilla/5.0 (Windows NT 10.0) Chrome/130.0" } });
   await hit("1.1.1.1"); await hit("1.1.1.1"); await hit("2.2.2.2");
   const row = await env.DB.prepare("SELECT views, visitors FROM page_views WHERE path = '/pricing'").first();
   assert.equal(row.views, 3);
