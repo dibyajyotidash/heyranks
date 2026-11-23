@@ -129,7 +129,7 @@ test("users can't read each other's data", async () => {
 
 test("payment before verification is applied when the email is confirmed", async () => {
   const payload = JSON.stringify({ event: "payment.captured", payload: { payment: { entity: {
-    id: "pay_123", email: "alice@example.com", amount: 1000, currency: "USD", notes: { plan: "180day" } } } } });
+    id: "pay_123", email: "alice@example.com", amount: 84900, currency: "INR", notes: { plan: "180day" } } } } });
   const unsigned = await call("POST", "webhook", { body: payload });
   assert.equal(unsigned.status, 400, "unsigned webhooks are rejected");
   const forged = await call("POST", "webhook", { body: payload, headers: { "x-razorpay-signature": "0".repeat(64) } });
@@ -164,15 +164,15 @@ test("ADMIN_EMAILS grants admin only after the email is verified", async () => {
   assert.equal(overview.status, 200);
   assert.equal(overview.data.series.length, 7);
   assert.ok(overview.data.kpis.users >= 3);
-  assert.equal(overview.data.revenue[0].total, 1000);
+  assert.equal(overview.data.revenue[0].total, 84900);
 
   const users = await call("GET", "admin/users?q=bob", { cookie: admin });
   assert.equal(users.data.users.length, 1);
-  const upd = await call("PATCH", `admin/users/${users.data.users[0].id}`, { cookie: admin, body: { plan: "lifetime", payment: { amount: 49 } } });
+  const upd = await call("PATCH", `admin/users/${users.data.users[0].id}`, { cookie: admin, body: { plan: "lifetime", payment: { amount: 4149 } } });
   assert.equal(upd.status, 200);
   assert.equal(upd.data.user.plan_active, "lifetime");
   const after = await call("GET", "admin/overview?days=7", { cookie: admin });
-  assert.equal(after.data.revenue[0].total, 5900, "manual payment counted in revenue");
+  assert.equal(after.data.revenue[0].total, 499800, "manual payment counted in revenue");
 });
 
 test("login attempts are rate limited", async () => {

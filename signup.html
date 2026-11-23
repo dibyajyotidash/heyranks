@@ -67,15 +67,33 @@
 const { api, esc } = HR;
 const params = new URLSearchParams(location.search);
 const plan = ["180day", "lifetime"].includes(params.get("plan")) ? params.get("plan") : null;
-const PLAN_NAMES = { "180day": "180-Day Pass ($10)", lifetime: "Lifetime Founder ($49)" };
+const PLAN_NAMES = { "180day": "180-Day Pass (₹849)", lifetime: "Lifetime Founder (₹4,149)" };
 const msg = document.getElementById("msg");
 const say = text => { msg.innerHTML = text ? `<div class="alert error">${esc(text)}</div>` : ""; };
 
 if (plan) {
   document.getElementById("plan-note").textContent = `Step 1 of 2: create your account. Next, you'll pay for the ${PLAN_NAMES[plan]}.`;
   document.getElementById("side-title").textContent = `You picked the ${PLAN_NAMES[plan]}`;
-  document.getElementById("side-sub").textContent = "Create your account first. After payment your plan is switched on automatically once you confirm your email.";
+  document.getElementById("side-sub").textContent = "Create your account first, then pay securely with UPI, card or net banking through Cashfree. Your plan switches on as soon as the payment goes through.";
 }
+
+/** After signup (or for someone already logged in): pay with Cashfree, else a payment link, else the dashboard. */
+async function continueToPayment(email) {
+  const config = await api("config");
+  if (plan && config.cashfree) return HR.checkout(plan);
+  const link = plan && config.payment_links[plan];
+  if (link) { location.href = link + (link.includes("?") ? "&" : "?") + "prefilled_email=" + encodeURIComponent(email); return; }
+  location.replace("/dashboard?welcome=1" + (plan ? `&plan=${plan}` : ""));
+}
+
+// Already logged in: no need for a second account.
+fetch("/api/me", { credentials: "same-origin" }).then(r => r.ok ? r.json() : null).then(d => {
+  if (!d) return;
+  if (!plan) return location.replace("/dashboard");
+  document.getElementById("form").classList.add("hidden");
+  document.getElementById("plan-note").textContent = `You're logged in as ${d.user.email}. Taking you to payment…`;
+  continueToPayment(d.user.email).catch(err => say(err.message));
+});
 if (params.get("email")) document.getElementById("email").value = params.get("email");
 if (params.get("website")) document.getElementById("website").value = params.get("website");
 
@@ -99,15 +117,13 @@ document.getElementById("form").addEventListener("submit", async e => {
   btn.disabled = true; btn.textContent = "Creating your account…"; say("");
   try {
     await api("auth/signup", { method: "POST", body });
-    if (plan) {
-      const { payment_links } = await api("config");
-      const link = payment_links[plan];
-      if (link) {
-        location.href = link + (link.includes("?") ? "&" : "?") + "prefilled_email=" + encodeURIComponent(body.email);
-        return;
-      }
+    btn.textContent = plan ? "Opening secure payment…" : "Setting up your dashboard…";
+    try {
+      await continueToPayment(body.email);
+    } catch (err) {
+      // The account exists now; payment can be retried from the dashboard.
+      location.replace(`/dashboard?welcome=1#account`);
     }
-    location.replace("/dashboard?welcome=1" + (plan ? `&plan=${plan}` : ""));
   } catch (err) {
     say(err.message);
     btn.disabled = false; btn.textContent = "Create account →";
