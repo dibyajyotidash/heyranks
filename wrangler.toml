@@ -10,9 +10,9 @@ binding = "DB"
 database_name = "heyranks-prod"
 database_id = "97003260-65b8-437c-8af7-7bab3d3f6f76"
 
-# Env vars — set secrets via:
-#   wrangler pages secret put RESEND_API_KEY
-#   wrangler pages secret put ADMIN_SECRET
-#   wrangler pages secret put PSI_KEY          (optional — Google PageSpeed)
-#   wrangler pages secret put STRIPE_SECRET    (optional — Stripe webhooks)
-#   wrangler pages secret put RAZORPAY_SECRET  (optional — Razorpay webhooks)
+# Tables are created / migrated automatically on the first request (lib/schema.js).
+# Env vars — set secrets via `wrangler pages secret put <NAME>` (full list in README.md):
+#   RESEND_API_KEY, ADMIN_EMAILS, SITE_URL, ADMIN_SECRET
+#   PAYMENT_LINK_180DAY, PAYMENT_LINK_LIFETIME           (optional — upgrade buttons)
+#   STRIPE_SECRET | RAZORPAY_SECRET | LEMONSQUEEZY_SECRET (webhook signing secrets)
+#   PSI_KEY, CURRENCY                                     (optional)

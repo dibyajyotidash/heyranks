@@ -1,158 +1,131 @@
-# HeyRanks — deploy guide
+# HeyRanks
+
+Weekly SEO + AI-visibility reports for small businesses. Users have accounts, track their sites,
+and get weekly, monthly, quarterly, half-yearly and yearly reports. Admins see revenue, customers,
+signups and visits.
+
+## Run it locally
+
+```
+npm install
+npm run seed:demo      # optional: demo login with 70 weeks of history + demo customers
+npm run dev            # http://localhost:8787  (SQLite file in .data/dev.db)
+npm test               # API, period maths and legacy-migration tests
+```
+
+Demo login: `demo@heyranks.com` / `demo-password`. To open `/admin` locally, start the server with
+`ADMIN_EMAILS=demo@heyranks.com npm run dev`. Without `RESEND_API_KEY`, no email is sent: login and
+reset links are printed in the terminal instead.
 
 ## Files
 
 | File | Purpose |
 |---|---|
-| `index.html` | Landing page — free scan calls `/api/scan` |
-| `signup.html` | Post-payment onboarding form |
-| `lib/core.js` | All logic — scan, signup, weekly job, email (shared) |
-| `_worker.js` | Cloudflare entry point |
-| `api/index.js` | Vercel entry point |
-| `schema.sql` | D1 database schema (run once) |
-| `wrangler.toml` | Cloudflare config — D1 binding + Monday 6am cron |
-| `terms.html`, `privacy.html`, `refund.html` | Legal pages |
-| `robots.txt`, `sitemap.xml`, `llms.txt` | SEO & AI-visibility files |
+| `index.html` | Landing page: free scan, live counters, pricing |
+| `signup.html`, `login.html`, `reset.html` | Accounts: password, email login link, password reset |
+| `dashboard.html` | User dashboard: scores, period reports, fixes, account settings |
+| `admin.html` | Admin: revenue, customers, signups, visits, user management |
+| `assets/app.css`, `assets/app.js` | Shared styles, API helper and SVG charts for the app pages |
+| `lib/api.js` | Every `/api/*` route |
+| `lib/schema.js` | **Database schema + migrations** (source of truth; runs automatically) |
+| `lib/reports.js` | Weekly → yearly period roll-ups |
+| `lib/auth.js` | Password hashing, sessions, login tokens, rate limits |
+| `lib/core.js` | Site scanner, email templates, daily job |
+| `lib/db.js` | Turso/libSQL adapter with the D1 API (Vercel + local) |
+| `_worker.js` / `api/index.js` | Cloudflare / Vercel entry points (both call `lib/api.js`) |
+| `scripts/dev.mjs` | Local server |
+| `scripts/seed-demo.mjs` | Demo data (tagged, never counted in real stats) |
 
-> `_worker.js` (Cloudflare) and `api/index.js` (Vercel) both route to `lib/core.js`.
-> It supersedes `functions/api/scan.js` — that file is kept for reference only.
-
----
-
-## Deploy on Vercel (+ Turso database)
-
-The site runs on Vercel or Cloudflare from the same code. All logic lives in
-`lib/core.js`. Vercel uses `api/index.js`, `vercel.json` and Turso (SQLite).
-Cloudflare uses `_worker.js`, `wrangler.toml` and D1.
-
-| Vercel file | Purpose |
-|---|---|
-| `api/index.js` | One function for all `/api/*` routes + the cron endpoint |
-| `lib/db.js` | Makes Turso look like D1, so `lib/core.js` is unchanged |
-| `vercel.json` | Build, clean URLs, `/api/*` routing, 300s limit, daily cron |
-| `scripts/build-static.mjs` | Copies only the public pages into `public/` |
-| `scripts/init-db.mjs` | Creates the tables in Turso (`npm run db:init`) |
-
-### 1. Import the repo
-vercel.com → **Add New → Project** → import `dibyajyotidash/heyranks`.
-Framework preset: **Other**. Leave build settings as they are (vercel.json sets them). Deploy.
-
-### 2. Add the database
-Project → **Storage** → **Create Database** → **Turso Cloud** (free plan) → connect it to the project.
-This adds `TURSO_DATABASE_URL` and `TURSO_AUTH_TOKEN` automatically.
-
-Create the tables once, from your computer:
-```
-npm i -g vercel
-vercel link
-vercel env pull .env.local
-npm install
-node --env-file=.env.local scripts/init-db.mjs
-```
-
-### 3. Environment variables
-Project → **Settings → Environment Variables** (Production):
-
-| Name | Value |
-|---|---|
-| `RESEND_API_KEY` | from resend.com |
-| `ADMIN_SECRET` | any long random string (manual weekly run) |
-| `CRON_SECRET` | any long random string. Vercel sends it to `/api/cron` automatically |
-| `PSI_KEY` | optional, Google PageSpeed key |
-
-Then **Deployments → Redeploy** so they take effect.
-
-### 4. Domain
-Project → **Settings → Domains** → add `heyranks.com` and `www.heyranks.com`,
-then set the DNS records Vercel shows at your domain registrar.
-
-### Weekly reports on Vercel
-`vercel.json` runs `/api/cron` **daily at 06:00 UTC** (Hobby plan minimum is daily;
-timing can drift up to 59 min). Each run only reports customers who haven't had a
-report since this week's Monday, so on Monday it sends everyone's report and the other
-days it just retries anyone who failed or didn't fit in Monday's 300-second run. New
-signups get their welcome scan right away and their first weekly report the next Monday.
-
-Manual run: `curl -X POST https://heyranks.com/api/weekly -H "X-Admin-Secret: YOUR_ADMIN_SECRET"`
-
----
-
-## Deploy (Cloudflare Pages + D1)
-
-### 1 — Create the D1 database
+## Data model
 
 ```
-wrangler d1 create heyranks-prod
+users 1─* sites 1─* scans          every scan result (signup, weekly, manual)
+               1─* reports        roll-ups per weekly | monthly | quarterly | half_yearly | yearly period
+users 1─* sessions, auth_tokens   logins (only SHA-256 hashes of tokens are stored)
+users 1─* payments                verified payments → revenue stats
+rate_limits, page_views, meta     abuse limits, anonymous daily visit counts, schema version
 ```
 
-Copy the `database_id` from the output and paste it into `wrangler.toml`.
+Every scan updates the five reports whose period contains it, so the current week, month,
+quarter, half-year and year are always live in the database. A period's report stops changing
+when the period ends. Each report stores start/end/average/min/max score, mobile speed, and the issues
+fixed, new and still open, compared with the last scan before the period began. Periods are calendar
+periods in UTC (weeks run Monday to Sunday).
 
-### 2 — Run the schema
+The schema migrates itself on the first API request. The old `customers`/`reports` tables are renamed
+to `legacy_customers`/`legacy_reports`, and their data is copied into users, sites, scans and reports
+(`test/migration.test.js`).
+
+## Plans
+
+| Plan | Sites | Weekly email | Period summaries by email | Rescans/day |
+|---|---|---|---|---|
+| Free | 1 | – | – | 3 |
+| 180-Day Pass ($10) | 1 | ✓ | ✓ | 10 |
+| Lifetime ($49) | 3 | ✓ | ✓ | 10 |
+
+New accounts start on Free. A paid plan is switched on by a **verified payment webhook** or by an
+admin (Admin → Users → Manage). Payments are matched by email and only applied once the user has
+confirmed that email, so nobody can claim someone else's payment by signing up with their address.
+
+## Environment variables
+
+| Name | Required | Purpose |
+|---|---|---|
+| `TURSO_DATABASE_URL`, `TURSO_AUTH_TOKEN` | Vercel | Database (added by the Turso integration) |
+| `RESEND_API_KEY` | yes | Email (reports, login links, resets) |
+| `ADMIN_EMAILS` | yes | Comma-separated. These users become admins once they confirm their email |
+| `SITE_URL` | recommended | `https://heyranks.com`, used in emailed links |
+| `CRON_SECRET` | Vercel | Protects `/api/cron` (Vercel sends it automatically) |
+| `ADMIN_SECRET` | optional | Manual job run: `POST /api/weekly` with header `X-Admin-Secret` |
+| `PAYMENT_LINK_180DAY`, `PAYMENT_LINK_LIFETIME` | optional | Stripe/Razorpay payment links for the upgrade buttons |
+| `STRIPE_SECRET` / `RAZORPAY_SECRET` / `LEMONSQUEEZY_SECRET` | per provider | Webhook signing secrets. Unsigned webhooks are rejected |
+| `CURRENCY` | optional | Main currency in the admin revenue view (default `USD`) |
+| `PSI_KEY` | optional | Google PageSpeed key |
+
+## Deploy on Vercel (+ Turso)
+
+1. vercel.com → **Add New → Project** → import the repo. Framework preset: **Other** (vercel.json sets the rest).
+2. Project → **Storage → Create Database → Turso Cloud** → connect. Tables are created on the first request.
+3. Add the environment variables above, then **Redeploy**.
+4. **Settings → Domains** → add `heyranks.com` and `www.heyranks.com`.
+5. Log in once with **“Email me a login link”** using an `ADMIN_EMAILS` address to unlock `/admin`.
+
+`vercel.json` runs `/api/cron` daily at 06:00 UTC. On the first run each week it sends the weekly
+reports. The other days it retries failures and emails monthly, quarterly, half-yearly and yearly
+summaries once those periods end. Expired sessions and tokens are cleaned up on every run.
+
+After deploying, check that query strings reach the API through the `/api/:route*` rewrite (for example,
+`/dashboard` → Monthly tab shows monthly rows).
+
+## Deploy on Cloudflare Pages (+ D1)
 
 ```
-wrangler d1 execute heyranks-prod --file=schema.sql
-```
-
-### 3 — Set secrets
-
-```
-wrangler pages secret put RESEND_API_KEY     # get from resend.com (free tier: 100 emails/day)
-wrangler pages secret put ADMIN_SECRET       # any random string — protects the manual trigger
-wrangler pages secret put PSI_KEY            # optional: Google PageSpeed Insights API key
-```
-
-### 4 — Deploy
-
-```
-npm i -g wrangler
-wrangler login
 wrangler pages deploy . --project-name heyranks
+wrangler pages secret put RESEND_API_KEY      # and the other variables above
 ```
 
-### 5 — Custom domain
+The D1 binding is in `wrangler.toml`. Tables are created on the first request (no `d1 execute` step).
+`_worker.js` serves only public files, so `lib/`, `scripts/` and other source files aren't downloadable.
+For scheduled jobs, use a daily trigger (`0 6 * * *`) that calls `/api/weekly` with `X-Admin-Secret`.
 
-Cloudflare → Workers & Pages → heyranks → Custom domains → add `heyranks.com`.
+## Payments
 
----
+Point your provider's webhook at `https://heyranks.com/api/webhook` and set its signing secret.
 
-## Weekly reports
+- **Stripe:** event `checkout.session.completed`. Put `{"plan":"180day"}` or `{"plan":"lifetime"}` in the session metadata.
+- **Razorpay:** event `payment.captured`. Put `plan` in the payment notes.
+- **Lemon Squeezy:** event `order_created`. Put `plan` in the custom data.
 
-The cron fires every **Monday at 6:00 AM UTC**.  
-
-**Set up the cron trigger in the Cloudflare dashboard** (Pages does not support `[triggers]` in wrangler.toml):
-1. Workers & Pages → `heyranks` → **Settings** → **Triggers**
-2. Add Cron Trigger: `0 6 * * 1`
-
-To trigger a test run manually:
-
-```
-curl -X POST https://heyranks.com/api/weekly \
-  -H "X-Admin-Secret: YOUR_ADMIN_SECRET"
-```
-
----
-
-## Payment integration
-
-The "Start for $10" and "Claim lifetime deal" buttons go to `/signup?plan=180day` and `/signup?plan=lifetime`.
-
-**Option A — no webhook (simplest for launch):**  
-Customers pay via your Razorpay/Stripe/Lemon Squeezy payment link, then land on `/signup` to enter their details. Manual verification is not needed — you trust that they paid.
-
-**Option B — Stripe webhook:**  
-In your Stripe dashboard, add a webhook pointing to `https://heyranks.com/api/webhook`.  
-Put the signing secret in `STRIPE_SECRET`. Pass `{"plan":"180day","website":"..."}` as metadata on the checkout session.
-
-**Option C — Lemon Squeezy webhook:**  
-In Lemon Squeezy, add a webhook to `https://heyranks.com/api/webhook`.  
-Pass `{"plan":"180day","website":"..."}` as custom data on the product.
-
----
+Payments are idempotent: provider retries are ignored. If you take a payment outside the webhook, record
+it in Admin → Users → Manage so revenue stays accurate.
 
 ## Still to do before launch
 
-1. **Payment links** — replace `href="/signup?plan=180day"` on paid plan buttons with your actual Razorpay/Stripe payment link (redirect to `/signup?plan=180day&email={email}` after payment).
-2. **WhatsApp number** — replace `+91 00000 00000` in `index.html`.
-3. **Email domain** — verify `heyranks.com` in Resend and configure DKIM.
-4. **Google Search Console** — verify domain and submit `sitemap.xml`.
-5. **Legal review** — have `terms.html`, `privacy.html`, `refund.html` checked before taking payments.
+1. Set `RESEND_API_KEY` and verify `heyranks.com` in Resend (DKIM).
+2. Create the payment links and webhooks, then set `PAYMENT_LINK_*` and the signing secret.
+3. Replace the `+91 00000 00000` WhatsApp placeholder in `index.html`.
+4. Several landing-page features aren't built yet: AI-assistant answer tracking, competitor watch,
+   WhatsApp alerts, PDF reports, review replies, content ideas. Build them or soften the copy.
+5. Have `terms.html`, `privacy.html` and `refund.html` reviewed. The privacy policy should mention
+   account data, session IPs (for security) and the anonymous visit counter.
