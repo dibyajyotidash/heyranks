@@ -12,7 +12,7 @@ process.env.TURSO_DATABASE_URL = `file:${join(dir, "audit.db").replace(/\\/g, "/
 const { handleApi } = await import("../lib/api.js");
 const { d1 } = await import("../lib/db.js");
 const { runScan, runWeekly, sendPeriodSummaries, fetchPublic, resolveOverHttps } = await import("../lib/core.js");
-const { activatePlan, LIFETIME_CAP } = await import("../lib/plans.js");
+const { activatePlan } = await import("../lib/plans.js");
 const { siteOrigin } = await import("../lib/http.js");
 const { ensureSchema } = await import("../lib/schema.js");
 const { rebuildAllReports } = await import("../lib/reports.js");
@@ -62,15 +62,22 @@ async function paidUserWithSite(email) {
 }
 
 // ─── #5 score ─────────────────────────────────────────────────────────────────
-test("#5 the score doesn't change when PageSpeed doesn't answer", async () => {
+test("#5 missing PageSpeed data is left out of the score, never counted as a failure", async () => {
   net.psi = null;
   const without = await runScan(SITE, env);
+  assert.equal(without.speed, null);
+  assert.equal(without.scores.categories.performance.score, null, "performance isn't measured");
+  assert.ok(without.checks.filter(c => c.category === "performance").every(c => c.status === "na"));
+  const measured = Object.values(without.scores.categories).filter(c => c.score !== null);
+  const average = Math.round(measured.reduce((s, c) => s + c.score * c.weight, 0) / measured.reduce((s, c) => s + c.weight, 0));
+  assert.equal(without.scores.capped?.from ?? without.score, average, "the overall score is the average of measured categories only");
+
   net.psi = 35;
   const withSlow = await runScan(SITE, env);
-  assert.equal(without.speed, null);
   assert.equal(withSlow.speed, 35);
-  assert.equal(without.score, withSlow.score, "speed is shown, not scored");
-  assert.ok(withSlow.issues.some(i => i.id === "speed"), "a slow site still gets the speed fix");
+  assert.equal(withSlow.scores.categories.performance.score, 35);
+  assert.ok(withSlow.issues.some(i => i.id === "perf_score"), "a slow site gets the speed fix");
+  assert.ok(withSlow.scores.coverage > without.scores.coverage, "measuring speed raises coverage");
   net.psi = null;
 });
 
@@ -126,38 +133,29 @@ async function razorpay(entity) {
 test("#3 signed webhooks for the wrong plan, currency or amount grant nothing", async () => {
   const { id } = await paidUserWithSite("payer@example.com");
   await run("UPDATE users SET plan = 'free', plan_expires_at = NULL WHERE id = ?", id);
-  const base = { email: "payer@example.com", currency: "INR", notes: { plan: "lifetime" } };
-  for (const [ref, extra] of [["pay_low", { amount: 84900 }], ["pay_usd", { amount: 414900, currency: "USD" }],
-                              ["pay_noplan", { amount: 414900, notes: {} }], ["pay_badplan", { amount: 414900, notes: { plan: "forever" } }]]) {
+  const base = { email: "payer@example.com", currency: "INR", notes: { plan: "180day" } };
+  for (const [ref, extra] of [["pay_low", { amount: 50000 }], ["pay_usd_low", { amount: 999, currency: "USD" }],
+                              ["pay_eur", { amount: 84900, currency: "EUR" }], ["pay_lifetime", { amount: 414900, notes: { plan: "lifetime" } }],
+                              ["pay_noplan", { amount: 84900, notes: {} }], ["pay_badplan", { amount: 84900, notes: { plan: "forever" } }]]) {
     const r = await razorpay({ ...base, id: ref, ...extra });
     assert.equal(r.status, 200);
     assert.ok(r.data.rejected, ref);
     assert.equal((await one("SELECT status FROM payments WHERE provider_ref = ?", ref)).status, "rejected");
   }
   assert.equal((await one("SELECT plan FROM users WHERE id = ?", id)).plan, "free");
-  // Full price plus tax on top is fine.
-  assert.equal((await razorpay({ ...base, id: "pay_ok", amount: 489582 })).data.rejected, undefined);
-  assert.equal((await one("SELECT plan FROM users WHERE id = ?", id)).plan, "lifetime");
-  const rev = await one("SELECT SUM(amount) AS n FROM payments WHERE status = 'paid' AND email = 'payer@example.com'");
-  assert.equal(rev.n, 489582, "rejected events never count as revenue");
+  // Full price plus tax on top is fine, in INR (₹849 + 18% GST) or USD ($10).
+  assert.equal((await razorpay({ ...base, id: "pay_ok", amount: 100182 })).data.rejected, undefined);
+  assert.equal((await one("SELECT plan FROM users WHERE id = ?", id)).plan, "180day");
+  assert.equal((await razorpay({ ...base, id: "pay_usd_ok", amount: 1000, currency: "USD" })).data.rejected, undefined);
+  const rev = await one("SELECT SUM(amount) AS n FROM payments WHERE status = 'paid' AND email = 'payer@example.com' AND currency = 'INR'");
+  assert.equal(rev.n, 100182, "rejected events never count as revenue");
 });
 
-// ─── Lifetime cap ─────────────────────────────────────────────────────────────
-test("Lifetime checkout stops at the 500 cap", async () => {
+test("Lifetime is no longer sold", async () => {
   const cookie = (await call("POST", "auth/signup", { body: { email: "late-buyer@example.com", password: "late buyer pw" } })).cookie;
-  const before = (await call("GET", "config")).data.lifetime;
-  assert.equal(before.cap, LIFETIME_CAP);
-  const taken = LIFETIME_CAP - before.left;
-  const rows = Array.from({ length: LIFETIME_CAP - taken }, (_, i) => [crypto.randomUUID(), `b${i}@example.com`, `fill_${i}`]);
-  for (let i = 0; i < rows.length; i += 100) {
-    const chunk = rows.slice(i, i + 100);
-    await env.DB.prepare(`INSERT INTO payments (id, email, provider, provider_ref, plan, amount, currency, status, created_at) VALUES
-      ${chunk.map(() => "(?, ?, 'manual', ?, 'lifetime', 414900, 'INR', 'paid', datetime('now'))").join(", ")}`).bind(...chunk.flat()).run();
-  }
-  assert.equal((await call("GET", "config")).data.lifetime.left, 0);
+  assert.equal((await call("GET", "config")).data.lifetime, undefined);
   const r = await call("POST", "checkout", { cookie, body: { plan: "lifetime" } });
-  assert.equal(r.status, 409);
-  assert.match(r.data.error, /sold out/);
+  assert.equal(r.status, 400);
 });
 
 // ─── #7 resource limits ───────────────────────────────────────────────────────

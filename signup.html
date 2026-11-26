@@ -66,8 +66,8 @@
 <script>
 const { api, esc } = HR;
 const params = new URLSearchParams(location.search);
-const plan = ["180day", "lifetime"].includes(params.get("plan")) ? params.get("plan") : null;
-const PLAN_NAMES = { "180day": "180-Day Pass (₹849)", lifetime: "Lifetime Founder (₹4,149)" };
+const plan = params.get("plan") === "180day" ? "180day" : null;
+const PLAN_NAMES = { "180day": "180-Day Pass ($10)" };
 const msg = document.getElementById("msg");
 const say = text => { msg.innerHTML = text ? `<div class="alert error">${esc(text)}</div>` : ""; };
 

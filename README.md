@@ -1,8 +1,9 @@
 # HeyRanks
 
-Weekly SEO + AI-visibility reports for small businesses. Users have accounts, track their sites,
-and get weekly, monthly, quarterly, half-yearly and yearly reports. Admins see revenue, customers,
-signups and visits.
+Website growth intelligence for small businesses: a free 40-check homepage scan, and on the $10 pass a
+50-page full-site audit with evidence for every finding, category scores, competitor comparison, optional
+keyword / backlink / AI-visibility data, a 30-day roadmap, weekly monitoring and period reports.
+Admins see revenue, customers, signups, visits and external API costs.
 
 ## Run it locally
 
@@ -24,7 +25,8 @@ reset links are printed in the terminal instead.
 | `index.html` | Landing page: free scan, live counters, pricing |
 | `signup.html`, `login.html`, `reset.html` | Accounts: password, email login link, password reset |
 | `payment.html` | Return page after Cashfree checkout: confirms the payment and shows the plan |
-| `dashboard.html` | User dashboard: scores, period reports, fixes, account settings |
+| `dashboard.html` | User dashboard: scores, category health, full-audit card, period reports, fixes, account settings |
+| `report.html` | Full-site audit report: 19 sections, issue drawer, filters, roadmap, settings; prints to PDF |
 | `admin.html` | Admin: revenue, customers, signups, visits, user management |
 | `assets/app.css`, `assets/app.js` | Shared styles, API helper and SVG charts for the app pages |
 | `lib/api.js` | Every `/api/*` route |
@@ -35,7 +37,16 @@ reset links are printed in the terminal instead.
 | `lib/plans.js` | Plans, prices and granting a plan (shared by the API and the daily job) |
 | `lib/analytics.js` | Visitor analytics: records page views, builds the Admin → Visitors report |
 | `assets/track.js` | Page-view tracker included on the public pages (no cookies) |
-| `lib/core.js` | Site scanner, email templates, daily job |
+| `lib/core.js` | Email templates, saving scans, the daily job |
+| `lib/scan.js` | Homepage scan: collects site-wide evidence in parallel and scores it |
+| `lib/audit.js` | Full-site audit job: resumable crawl, link checks, data modules, AI analysts, findings, re-checks |
+| `lib/analysis.js` | Pure scoring engine: checks → findings, category scores, coverage, roadmap, diffs |
+| `lib/catalog.js` | Every check's meaning: severity, why, impact, steps, code, time, expertise, verification, references |
+| `lib/crawler.js` | robots.txt (RFC 9309), sitemaps, URL rules, HTML extraction |
+| `lib/domain.js` | Organizational domain, SPF / DMARC / DKIM / MX analysis, DNSSEC, RDAP, TLS certificate |
+| `lib/net.js` | SSRF-safe fetching (every redirect hop must resolve to a public address), size caps |
+| `lib/providers.js` | PageSpeed Insights, DataForSEO, AI-visibility providers, competitor comparison |
+| `lib/ai.js` | Claude calls (structured JSON, budgets, refusal fallbacks) and the AI analysts |
 | `lib/db.js` | Turso/libSQL adapter with the D1 API (Vercel + local) |
 | `_worker.js` / `api/index.js` | Cloudflare / Vercel entry points (both call `lib/api.js`) |
 | `scripts/dev.mjs` | Local server |
@@ -49,6 +60,11 @@ users 1─* sites 1─* scans          every scan result (signup, weekly, manual
                1─* reports        roll-ups per weekly | monthly | quarterly | half_yearly | yearly period
 users 1─* sessions, auth_tokens   logins (only SHA-256 hashes of tokens are stored)
 users 1─* payments                verified payments → revenue stats
+sites 1─* audits 1─* audit_pages  full-site audits; crawl queue + extracted pages (kept 45 days)
+                 1─* findings     problems found by an audit (evidence only; text comes from lib/catalog.js)
+sites 1─* finding_status          the owner's done / ignored / verified state per finding, kept across audits
+sites 1─* competitors             competitor domains the owner tracks
+usage_events                      every paid external call and its cost (AI, keyword/backlink data)
 rate_limits, page_views, meta     abuse limits, anonymous daily visit counts, schema version
 ```
 
@@ -67,19 +83,53 @@ to `legacy_customers`/`legacy_reports`, and their data is copied into users, sit
 | Plan | Sites | Weekly email | Period summaries by email | Rescans/day |
 |---|---|---|---|---|
 | Free | 1 | – | – | 3 |
-| 180-Day Pass (₹849) | 1 | ✓ | ✓ | 10 |
-| Lifetime (₹4,149) | 3 | ✓ | ✓ | 10 |
+| 180-Day Pass ($10, charged as ₹849) | 1 | ✓ | ✓ | 10 |
+| Lifetime (no longer sold; existing customers keep it) | 3 | ✓ | ✓ | 10 |
 
-Prices live in `PLANS` in `lib/plans.js` (in paise). The landing page copy repeats them, so change both.
+Prices live in `PLANS` in `lib/plans.js`: `price` is the advertised USD price in cents, `cashfree_price`
+is what Cashfree charges in paise. The landing page copy repeats the $10, so change both.
 New accounts start on Free. A paid plan is switched on by a **Cashfree payment**, by a verified
-webhook from another provider, or by an admin (Admin → Users → Manage).
+webhook from another provider (INR at ≥ `cashfree_price`, or USD at ≥ `price`), or by an admin
+(Admin → Users → Manage).
 
-- **Lifetime is capped at 500 sales** (`LIFETIME_CAP` in `lib/plans.js`). Checkout refuses Lifetime once
-  500 are paid or in checkout, and the pricing card shows how many places are left.
 - **A full refund removes access automatically.** A refunded 180-Day Pass loses its 180 days, and a refunded
   Lifetime plan returns to Free. Partial refunds don't change access.
-- **The score never depends on PageSpeed.** It uses the 10 fixed checks, whose weights add up to 100.
-  Mobile speed is shown next to it when Google answers.
+- **Full-site audits are paid-plan only** (3 per site per day, 20 per user per month, plus one automatic
+  weekly audit per site). The free plan gets the homepage scan.
+
+## Scoring (score_version 2)
+
+Every check is pass (full credit) / warn (partial, usually half) / fail (none) / not measured. Not-measured
+checks are left out of every score, never counted as failures. Page-level and link checks earn credit in
+proportion to the share of pages or links that pass. A category score is earned ÷ possible points of its measured checks; the overall Website Growth
+Health Score weights the nine health categories (Technical 20, On-page 15, Performance 15, Content 10,
+AI readiness 10, Security 10, Email 10, UX 5, Conversion 5). Any critical problem caps the overall score at
+59. Each problem is scored once, in one category. Domain expiry doesn't change any category score, but a
+domain within 14 days of expiring is critical and so caps the overall score. Keyword,
+competitor, backlink and AI-visibility data never change the health score. Coverage (share of check weight
+measured) and confidence are shown with every score. Scores from before this method (v1) aren't compared
+with v2 scores ("since last scan" is hidden across the change).
+
+Email checks use the **organizational domain** (`www.example.co.uk` → `example.co.uk`): SPF and MX are read
+there, DMARC at `_dmarc.<organizational domain>` (a record found only at `_dmarc.www…` is reported as
+misplaced), SPF on common sending subdomains (`send.`, `bounce.`, `mg.`…) is recognised, and
+provider-specific SPF advice is given only when MX or SPF records prove the provider.
+
+## Full-site audits (lib/audit.js)
+
+`POST /api/sites/:id/audits` creates an audit and works on it in the background (`waitUntil`, 240 s per run).
+Stages: collect (site-wide evidence, PageSpeed mobile + desktop) → crawl (up to 50 pages: homepage links
+first, then sitemap URLs; robots.txt and Crawl-delay respected; same host and its www twin only) → links
+(HEAD checks of uncrawled internal links, 30 outbound links, 60 sitemap URLs) → modules (competitors,
+keywords, backlinks, AI visibility) → analyze (findings, scores, AI analysts, roadmap, diff). Each stage
+saves its progress. One worker at a time: a run claims a 90-second lease with its own token, a heartbeat
+renews it every 30 s, and every write requires the token, so a worker that lost its lease (or whose audit
+was cancelled) stops without overwriting anything. Crawl-delay is honoured up to 5 s per request.
+
+A run that ends with work left asks for the next run itself (`POST /api/audits/:id/continue`, signed with
+HMAC-SHA256 of `CRON_SECRET`, or `ADMIN_SECRET` if that's unset). That needs `SITE_URL` and one of those
+secrets; without them an unfinished audit resumes on the next status poll or the daily cron. Starting an
+audit while one is running joins it.
 
 ## Environment variables
 
@@ -90,16 +140,54 @@ webhook from another provider, or by an admin (Admin → Users → Manage).
 | `ADMIN_EMAILS` | yes | Comma-separated. These users become admins once they confirm their email |
 | `SITE_URL` | yes | `https://heyranks.com`. Used for links in emails and payment return URLs. Without it, links use `https://heyranks.com` (never the request's Host header) |
 | `FREE_SCANS_PER_HOUR` | optional | Site-wide cap on free homepage scans (default 300), on top of 10 per visitor per hour |
-| `CRON_SECRET` | Vercel | Protects `/api/cron` (Vercel sends it automatically) |
-| `ADMIN_SECRET` | optional | Manual job run: `POST /api/weekly` with header `X-Admin-Secret` |
+| `CRON_SECRET` | Vercel | Protects `/api/cron` (Vercel sends it automatically). Also signs audit continuations (with `SITE_URL`) |
+| `ADMIN_SECRET` | optional | Manual job run: `POST /api/weekly` with header `X-Admin-Secret`. Signs audit continuations when `CRON_SECRET` isn't set |
+| `AUDIT_DAILY_STARTS` | optional | With continuations on, how many due audits the daily cron starts (default 25) |
 | `CASHFREE_APP_ID`, `CASHFREE_SECRET_KEY` | yes (payments) | Cashfree API keys (merchant.cashfree.com → Developers → API keys) |
 | `CASHFREE_ENV` | yes (payments) | `sandbox` for test keys, `production` for live keys |
 | `CASHFREE_WEBHOOK_SECRET` | optional | Webhook signing secret, if different from the secret key |
 | `PAYMENT_LINK_180DAY`, `PAYMENT_LINK_LIFETIME` | optional | Fallback payment links, used only when Cashfree isn't configured |
 | `STRIPE_SECRET` / `RAZORPAY_SECRET` / `LEMONSQUEEZY_SECRET` | optional | Signing secrets for other providers' webhooks. Unsigned webhooks are rejected |
 | `CURRENCY` | optional | Main currency in the admin revenue view (default `INR`) |
+| `ANTHROPIC_API_KEY` | recommended | Claude: executive summary, content suggestions, sentiment, and Claude as an AI-visibility provider. Without it, summaries are written from the findings and those sections say "not configured" |
+| `HEYRANKS_CLAUDE_MODEL` | optional | Claude model for all of the above (default `claude-opus-5-5`). `claude-sonnet-5-5` or `claude-haiku-5-5` cost less; see the cost model below |
+| `DATAFORSEO_LOGIN`, `DATAFORSEO_PASSWORD` | optional | Keyword volumes/difficulty/rankings, competitor suggestions, keyword overlap and backlinks. Without them those sections say "not configured" (nothing is estimated) |
+| `OPENAI_API_KEY` + `OPENAI_MODEL` | optional | ChatGPT (OpenAI API) as an AI-visibility provider. Both must be set |
+| `GEMINI_API_KEY` + `GEMINI_MODEL` | optional | Gemini as an AI-visibility provider |
+| `PERPLEXITY_API_KEY` + `PERPLEXITY_MODEL` | optional | Perplexity (web search with citations) as an AI-visibility provider |
+| `AI_VISIBILITY_MAX_QUESTIONS` | optional | Questions per audit (default and maximum 5, plus one "what do you know about us" question) |
+| `AUDIT_COST_CAP_USD` | optional | Hard cap on paid calls per audit (default 1.50) |
+| `USER_MONTHLY_COST_CAP_USD` | optional | Hard cap on paid calls per customer per 30 days (default 3.00). Past it, audits still run but skip paid modules |
 | `ANALYTICS_SALT` | optional | Any random string, mixed into the daily anonymous visitor ID |
 | `PSI_KEY` | recommended | Google PageSpeed Insights API key. Without it Google's shared quota usually refuses, so scans have no speed score (`speed: null`) |
+
+## Cost model (per full audit)
+
+Every paid call is recorded in `usage_events` with its cost (Claude: priced from token usage; DataForSEO:
+the cost its API returns; other AI providers: a flat $0.01 estimate per answer). Admin → Overview shows
+the spend by provider and the average and maximum cost per audit.
+
+Rough cost of one owner-started audit with **every** integration on, at the defaults:
+
+| Part | Calls | Approx. cost |
+|---|---|---|
+| Crawl, DNS, RDAP, TLS, PageSpeed (with `PSI_KEY`) | ~150 HTTP requests | $0 (function time only) |
+| Claude analysts (`claude-opus-5-5`) | 2 + sentiment | $0.10–0.25 |
+| AI visibility: Claude | 6 answers | $0.05–0.20 |
+| AI visibility: OpenAI / Gemini / Perplexity | 6 answers each | ~$0.06 each (estimate; depends on the models you set) |
+| DataForSEO (keywords, competitors, backlinks) | ~10–15 live tasks | roughly $0.15–0.40 (actual cost is recorded) |
+
+So **about $0.45–1.10 per audit with everything on**, and $0.15–0.45 with only Claude. Guards that keep a $10
+customer profitable:
+- weekly audits reuse keyword, backlink and AI-visibility data, and the AI analysis, for 27 days; audits the
+  owner starts reuse provider data for 6 days;
+- `AUDIT_COST_CAP_USD` (default $1.50) per audit and `USER_MONTHLY_COST_CAP_USD` (default $3) per customer per
+  30 days are hard stops: past them, audits complete with measured findings only;
+- 3 owner-started audits per site per day, 20 per user per month.
+
+Setting `HEYRANKS_CLAUDE_MODEL=claude-haiku-5-5` cuts the Claude part by roughly 40x; `claude-sonnet-5-5` by
+about half. Whether the cheaper model's output is good enough is a product decision, so the default is the
+most capable Opus model.
 
 ## Deploy on Vercel (+ Turso)
 
@@ -111,7 +199,9 @@ webhook from another provider, or by an admin (Admin → Users → Manage).
 
 `vercel.json` runs `/api/cron` daily at 06:00 UTC. On the first run each week it sends the weekly
 reports. The other days it retries failures and emails monthly, quarterly, half-yearly and yearly
-summaries once those periods end. It also settles unpaid Cashfree orders and cleans up expired sessions and tokens.
+summaries once those periods end. It also settles unpaid Cashfree orders, queues a weekly full audit for every
+paid site whose last audit is over 6 days old, works on queued audits for up to ~110 s, and cleans up expired
+sessions, tokens and old audit data (crawled pages after 45 days, audits and findings after ~13 months).
 
 After deploying, check that query strings reach the API through the `/api/:route*` rewrite (for example,
 `/dashboard` → Monthly tab shows monthly rows).
@@ -164,7 +254,7 @@ For scheduled jobs, use a daily trigger (`0 6 * * *`) that calls `/api/weekly` w
 Same approach as the market_forecast_web integration: Orders API `2023-08-01` and the JS SDK v3.
 
 1. A logged-in user clicks a plan. `POST /api/checkout` saves a `pending` payment and creates a
-   Cashfree order (₹849 or ₹4,149). Clicking again within 30 minutes reuses the same order.
+   Cashfree order for ₹849 (the $10 pass). Clicking again within 30 minutes reuses the same order.
 2. The browser opens Cashfree's checkout (UPI, cards, net banking, wallets).
 3. Cashfree sends the user to `/payment?order_id=…` and calls `/api/webhook/cashfree`.
 4. Both of these ask Cashfree's API for the order. The plan is granted only when the order is `PAID`
@@ -191,8 +281,11 @@ If you take a payment some other way, record it in Admin → Users → Manage so
    Until Resend is set, no report is marked as sent; they all go out once it is.
 2. Set the `CASHFREE_*` variables, add the Cashfree webhook, and do one sandbox purchase end to end:
    pay, duplicate webhook, full refund (the plan should end) and partial refund (the plan should stay).
-3. Set `PSI_KEY` so the mobile speed shows on every scan.
-4. Have a lawyer review `terms.html`, `privacy.html` and `refund.html` for India.
-5. Before adding features to the landing page, ship and test them. The page now describes only what
-   the scanner does; "Not included yet" lists AI-answer checks, rankings, competitors and Google Business
-   Profile.
+3. Set `PSI_KEY` so speed and Core Web Vitals show on every scan and audit (without it, Performance is
+   "not measured").
+4. Set `ANTHROPIC_API_KEY` for AI summaries and content suggestions; optionally `DATAFORSEO_*` and the
+   OpenAI / Gemini / Perplexity keys + models. Each report lists which sources it used.
+5. Have a lawyer review `terms.html`, `privacy.html` and `refund.html` for India (privacy now lists the AI
+   and data providers that receive site data).
+6. Before adding features to the landing page, ship and test them. Keyword, backlink and AI-answer data
+   are described as "where those data sources are switched on".

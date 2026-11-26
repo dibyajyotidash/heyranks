@@ -1,0 +1,647 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Website report — HeyRanks</title>
+<meta name="robots" content="noindex">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='24' height='24' rx='6' fill='%230f1720'/%3E%3Cpath d='M4 18 L9 12 L13 15 L20 6' stroke='%23d9f99d' stroke-width='2.6' fill='none' stroke-linecap='round'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/assets/app.css">
+<script src="/assets/app.js"></script>
+</head>
+<body>
+<header class="topbar">
+  <div class="in">
+    <a href="/" class="logo"><span class="logo-mark"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M4 18 L9 12 L13 15 L20 6" stroke="#d9f99d" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span class="hide-sm">HeyRanks</span></a>
+    <span class="hide-sm" id="tb-host" style="color:#cbd5e1;font-size:.9rem"></span>
+    <span class="spacer"></span>
+    <select id="history-select" aria-label="Choose an audit" class="hidden"></select>
+    <a href="/dashboard" class="link">Dashboard</a>
+    <button class="link hidden hide-sm" id="pdf" type="button">Download PDF</button>
+  </div>
+</header>
+
+<main class="page">
+  <div id="state" role="status" aria-live="polite"></div>
+  <div id="report" class="rp hidden">
+    <nav class="rp-nav" id="nav" aria-label="Report sections"></nav>
+    <div id="main" style="min-width:0"></div>
+  </div>
+</main>
+
+<div class="drawer-bg" id="drawer-bg"></div>
+<aside class="drawer" id="drawer" role="dialog" aria-modal="true" aria-labelledby="dr-title">
+  <div class="row between" style="align-items:flex-start;margin-bottom:14px">
+    <div style="min-width:0"><div class="muted small" id="dr-kicker"></div><h2 id="dr-title" style="font-size:1.35rem"></h2></div>
+    <button class="btn ghost sm" id="dr-close" type="button">Close</button>
+  </div>
+  <div id="dr-body"></div>
+</aside>
+
+<script>
+const { api, esc, fmt, date, ago, toast, lineChart } = HR;
+const q = new URLSearchParams(location.search);
+let me, R = null, auditId = q.get("audit"), siteId = q.get("site"), pollTimer = null;
+
+const SEV = { critical: ["badge sev-critical", "Critical"], high: ["badge bad", "High"], medium: ["badge warn", "Medium"], low: ["badge", "Low"], info: ["badge", "Info"] };
+const sevBadge = s => `<span class="${SEV[s]?.[0] || "badge"}">${SEV[s]?.[1] || esc(s)}</span>`;
+const PROGRESS = { open: "", done: `<span class="badge good">Done</span>`, ignored: `<span class="badge">Ignored</span>` };
+const band = s => (s === null || s === undefined ? ["", "Not measured"] : s >= 75 ? ["good", "Good"] : s >= 45 ? ["warn", "Needs work"] : ["bad", "Poor"]);
+const safeUrl = u => (/^https?:\/\//i.test(String(u || "")) ? String(u) : null);
+const link = (u, text) => { const s = safeUrl(u); return s ? `<a href="${esc(s)}" target="_blank" rel="noopener nofollow" class="url">${esc(text ?? s)}</a>` : `<span class="url">${esc(text ?? u ?? "")}</span>`; };
+const ms = v => (v === null || v === undefined ? "–" : v >= 1000 ? `${(v / 1000).toFixed(1)} s` : `${Math.round(v)} ms`);
+const pct = v => (v === null || v === undefined ? "–" : `${v}%`);
+
+// ─── loading, progress, empty states ──────────────────────────────────────────
+function setState(html) { document.getElementById("state").innerHTML = html; document.getElementById("report").classList.toggle("hidden", !!html); }
+
+async function boot() {
+  try { ({ user: me } = await api("me")); } catch { return; }
+  setState(`<div class="card empty-state"><span class="spinner"></span> Loading your report…</div>`);
+  if (!auditId) {
+    if (!siteId) { const { sites } = await api("sites"); siteId = sites[0]?.id; }
+    if (!siteId) return setState(`<div class="card empty-state"><h2>Add a website first</h2><p>Add your site on the dashboard, then run a full audit.</p><a class="btn primary" href="/dashboard">Go to dashboard</a></div>`);
+    const { audits } = await api(`sites/${siteId}/audits`);
+    const pick = audits.find(a => a.status === "queued" || a.status === "running") || audits.find(a => a.status === "complete") || audits[0];
+    if (!pick) return showStart();
+    auditId = pick.id;
+  }
+  load();
+}
+
+async function load() {
+  clearTimeout(pollTimer);
+  let data;
+  try { data = await api(`audits/${auditId}`); } catch (err) { return setState(`<div class="card empty-state"><h2>Report not found</h2><p>${esc(err.message)}</p><a class="btn primary" href="/dashboard">Back to dashboard</a></div>`); }
+  siteId = data.audit.site_id;
+  document.getElementById("tb-host").textContent = data.audit.hostname;
+  document.title = `${data.audit.hostname} report — HeyRanks`;
+  if (q.get("audit") !== auditId) history.replaceState(null, "", `/report?audit=${encodeURIComponent(auditId)}${location.hash}`);
+  loadHistory();
+  const a = data.audit;
+  if (a.status === "complete") { R = data; setState(""); render(); return; }
+  if (a.status === "queued" || a.status === "running") return showProgress(a);
+  if (a.status === "failed") {
+    setState(`<div class="card empty-state"><h2>The audit didn't finish</h2><p>${esc(a.error || "Something went wrong.")}</p><button class="btn primary" id="start">Try again</button></div>`);
+    return bindStart();
+  }
+  setState(`<div class="card empty-state"><h2>This audit was cancelled</h2><p>Start a new one whenever you're ready.</p><button class="btn primary" id="start">Run a full audit</button></div>`);
+  bindStart();
+}
+
+async function loadHistory() {
+  const sel = document.getElementById("history-select");
+  try {
+    const { audits } = await api(`sites/${siteId}/audits`);
+    const done = audits.filter(a => a.status === "complete");
+    sel.classList.toggle("hidden", done.length < 2);
+    sel.innerHTML = done.map(a => `<option value="${esc(a.id)}" ${a.id === auditId ? "selected" : ""}>${date(a.finished_at)} · ${a.score}/100</option>`).join("");
+  } catch { /* history is optional */ }
+}
+document.getElementById("history-select").addEventListener("change", e => { auditId = e.target.value; R = null; load(); });
+
+function showProgress(a) {
+  const pctDone = a.stage === "crawl" ? Math.round((a.pages_crawled / a.page_limit) * 60) + 10 : { collect: 5, links: 72, modules: 82, analyze: 94 }[a.stage] || 3;
+  setState(`<div class="card" style="max-width:640px;margin:40px auto">
+    <div class="row between"><h2>Auditing ${esc(a.hostname)}</h2><span class="badge live">Running</span></div>
+    <p class="muted small" style="margin-top:6px">A full audit usually takes 3–10 minutes (longer for slow sites, or ones that ask crawlers to pause between pages). You can leave this page; the report will be here when it's done.</p>
+    <div class="meter" role="progressbar" aria-valuenow="${pctDone}" aria-valuemin="0" aria-valuemax="100" aria-label="Audit progress" style="margin-top:18px"><div style="width:${pctDone}%;background:var(--series)"></div></div>
+    <p style="margin-top:10px;font-size:.9rem"><span class="spinner"></span> ${esc(a.stage_label || "Starting")}${a.stage === "crawl" ? ` · ${a.pages_crawled} of up to ${a.page_limit} pages` : ""}</p>
+    <button class="btn ghost sm" id="cancel" style="margin-top:16px">Cancel audit</button>
+  </div>`);
+  document.getElementById("cancel").addEventListener("click", async () => { await api(`audits/${a.id}/cancel`, { method: "POST", body: {} }); load(); });
+  pollTimer = setTimeout(load, 3000);
+}
+
+function showStart() {
+  const paid = me.plan_active !== "free";
+  setState(`<div class="card empty-state">
+    <h2>${paid ? "Run your first full-site audit" : "Full-site audits are part of the 180-Day Pass"}</h2>
+    <p>We crawl up to 50 pages, check technical SEO, content, speed, security and email authentication, compare you with the competitors you choose, and build a 30-day plan from what we find.</p>
+    ${paid ? `<button class="btn primary" id="start">Start the audit</button>` : `<a class="btn primary" href="/dashboard#account">Upgrade for $10</a>`}
+  </div>`);
+  bindStart();
+}
+function bindStart() {
+  document.getElementById("start")?.addEventListener("click", async e => {
+    e.target.disabled = true;
+    try { const r = await api(`sites/${siteId}/audits`, { method: "POST", body: {} }); auditId = r.audit.id; load(); }
+    catch (err) { toast(err.message); e.target.disabled = false; }
+  });
+}
+
+// ─── report ───────────────────────────────────────────────────────────────────
+const SECTIONS = [
+  ["summary", "Executive summary"], ["health", "Website health"], ["critical", "Critical issues"],
+  ["technical", "Technical SEO"], ["onpage", "On-page SEO"], ["content", "Content"], ["keywords", "Keywords"],
+  ["competitors", "Competitors"], ["ai_visibility", "AI search visibility"], ["performance", "Performance"],
+  ["backlinks", "Backlinks"], ["security", "Security & domain"], ["email", "Email security"], ["ux", "User experience"],
+  ["conversion", "Conversion"], ["ai", "AI readiness"], ["roadmap", "30-day roadmap"], ["issues", "All issues"], ["evidence", "Audit evidence"],
+];
+const openFindings = () => R.findings.filter(f => f.progress === "open");
+const catLabel = id => R.category_meta.find(c => c.id === id)?.label || id;
+
+function render() {
+  document.getElementById("pdf").classList.remove("hidden");
+  const counts = id => {
+    if (id === "critical") return R.findings.filter(f => (f.severity === "critical" || f.severity === "high") && f.progress === "open").length;
+    if (id === "issues") return openFindings().filter(f => f.severity !== "info").length;
+    return R.findings.filter(f => f.category === id && f.progress === "open" && f.severity !== "info").length || "";
+  };
+  document.getElementById("nav").innerHTML = SECTIONS.map(([id, label]) => `<a href="#${id}">${esc(label)}<span class="n">${counts(id) || ""}</span></a>`).join("");
+  document.getElementById("main").innerHTML = [
+    summarySection(), healthSection(), criticalSection(),
+    catSection("technical", "Crawlability, indexing, links, redirects, duplicates and site structure."),
+    catSection("onpage", "Titles, descriptions, headings and images on every crawled page."),
+    catSection("content", "Depth, duplication and overlap of your content, plus AI content suggestions.", contentExtra()),
+    keywordsSection(), competitorsSection(), visibilitySection(),
+    catSection("performance", "Google Lighthouse lab tests (mobile and desktop) and real-user Core Web Vitals where Google has them.", performanceExtra()),
+    backlinksSection(),
+    catSection("security", "HTTPS, certificate, security headers, mixed content, DNSSEC and domain registration. Configuration gaps, not confirmed vulnerabilities.", securityExtra()),
+    catSection("email", "SPF, DMARC, DKIM and MX for your email domain.", emailExtra()),
+    catSection("ux", "Mobile setup, language, accessibility (automated checks) and forms."),
+    catSection("conversion", "Calls to action, contact details, trust signals, analytics and privacy. Read from text and links only."),
+    catSection("ai", "Whether AI crawlers may read your site and whether you describe your business in machine-readable form."),
+    roadmapSection(), issuesSection(), evidenceSection(), printAppendix(),
+  ].join("");
+  if (R.history.length > 1) lineChart(document.getElementById("history-chart"), R.history.map(h => ({ x: date(h.finished_at, { day: "numeric", month: "short" }), tip: date(h.finished_at), y: h.score })),
+    { yMax: 100, ticks: [0, 25, 50, 75, 100], height: 180, label: "Website Growth Health Score per audit" });
+  bindReport();
+  renderIssueList();
+  const m = location.hash.match(/^#issue=(.+)$/);
+  if (m) openIssue(decodeURIComponent(m[1]));
+  else if (location.hash.length > 1) document.getElementById(location.hash.slice(1))?.scrollIntoView();
+}
+
+const section = (id, title, intro, body) => `<section class="rp-section" id="${id}"><header><h2>${esc(title)}</h2>${intro ? `<p>${intro}</p>` : ""}</header>${body}</section>`;
+const unavailable = m => `<div class="unavailable"><b>Not available for this audit.</b> ${esc(m?.message || "This data source wasn't configured.")}${m?.source ? `<div class="source">Data source: ${esc(m.source)}</div>` : ""}</div>`;
+
+function issueCard(f) {
+  const n = (f.items || []).length;
+  return `<button type="button" class="issue is-${f.progress}" data-fp="${esc(f.fingerprint)}">
+    <span class="head">${sevBadge(f.severity)}<b>${esc(f.title)}</b>${PROGRESS[f.progress] || ""}${f.opportunity ? `<span class="badge good">Opportunity</span>` : ""}</span>
+    <p>${esc(f.evidence?.detected || "")}${n ? ` <span class="muted">· ${n} affected</span>` : ""}</p>
+    <span class="muted small">${esc(f.category_label)}</span>
+  </button>`;
+}
+
+function summarySection() {
+  const a = R.audit, s = R.summary, [cls, word] = band(a.score);
+  const c = s.counts || {};
+  const tiles = [["Critical", c.critical, "bad"], ["High", c.high, "bad"], ["Medium", c.medium, "warn"], ["Low", c.low, ""], ["Opportunities", s.opportunities, "good"]];
+  const alerts = (s.alerts || []).map(x => `<div class="banner warn" style="margin:0 0 10px"><span>${sevBadge(x.severity)} <b>${esc(x.title)}.</b> ${esc(x.detected)}</span></div>`).join("");
+  const byFp = new Map(R.findings.map(f => [f.fingerprint, f]));
+  const prios = (s.top_priorities || []).map(p => byFp.get(p.fingerprint) ? `<li><a href="#issue=${encodeURIComponent(p.fingerprint)}" data-open="${esc(p.fingerprint)}">${esc(byFp.get(p.fingerprint).title)}</a>${p.why_first ? ` <span class="muted">— ${esc(p.why_first)}</span>` : ""}</li>` : "").join("");
+  const d = s.diff;
+  return section("summary", "Executive summary", `Audit of <b>${esc(a.hostname)}</b> finished ${date(a.finished_at)} · ${s.pages?.crawled ?? "?"} pages crawled${s.pages?.complete ? " (whole site)" : ` (limit ${s.pages?.limit})`}.`, `
+    ${alerts}
+    <div class="grid cols-3">
+      <div class="card tile hero">
+        <div class="row between"><span class="label">Website Growth Health Score</span><span class="badge ${cls}">${word}</span></div>
+        <div class="value">${a.score}<small> /100</small></div>
+        <div class="meter" role="img" aria-label="Score ${a.score} out of 100"><div style="width:${a.score}%;background:var(--${cls || "line"})"></div></div>
+        <div class="delta">${s.capped ? `Capped from ${s.capped.from} because of critical issues.` : "Average of the measured categories."}</div>
+      </div>
+      <div class="card tile">
+        <div class="label">Audit coverage</div>
+        <div class="value">${a.coverage}<small>%</small></div>
+        <div class="delta">Confidence: <b>${esc(s.confidence || "–")}</b>. Share of checks we could measure; unmeasured checks don't affect the score.</div>
+      </div>
+      <div class="card tile">
+        <div class="label">Since the previous audit</div>
+        ${d ? `<div class="value"><span class="${d.resolved.length ? "up" : ""}">${d.resolved.length}</span><small> fixed · </small><span class="${d.new.length ? "down" : ""}">${d.new.length}</span><small> new</small></div><div class="delta">${d.persisting} still open.</div>`
+            : `<div class="value">–</div><div class="delta">This is the first audit. Changes show from the next one.</div>`}
+      </div>
+    </div>
+    <div class="grid cols-4" style="grid-template-columns:repeat(auto-fit,minmax(120px,1fr));margin-top:12px">
+      ${tiles.map(([l, v, k]) => `<div class="card tile"><div class="label">${l}</div><div class="value ${v && k === "good" ? "up" : v && k === "bad" ? "down" : ""}">${v ?? 0}</div></div>`).join("")}
+    </div>
+    <div class="card" style="margin-top:12px">
+      <h3>Summary</h3>
+      <p style="margin-top:6px;line-height:1.65">${esc(s.executive_summary || "")}</p>
+      <div class="source">Written by: ${esc(s.executive_summary_source || "HeyRanks")}. Based only on this audit's measured findings.</div>
+      ${prios ? `<h3 style="margin-top:16px">Fix these first</h3><ol class="steps-list" style="margin-top:6px">${prios}</ol>` : ""}
+      <div class="row no-print" style="margin-top:16px"><button class="btn primary sm" id="new-audit">Run a new audit</button><button class="btn ghost sm" data-print>Download PDF</button></div>
+    </div>`);
+}
+
+function healthSection() {
+  const rows = R.category_meta.filter(c => c.weight).map(c => {
+    const v = R.categories[c.id] || {}, [cls, word] = band(v.score);
+    return `<div class="cat-row"><a href="#${c.id}">${esc(c.label)}</a>
+      <div class="meter" role="img" aria-label="${esc(c.label)}: ${v.score ?? "not measured"}"><div style="width:${v.score ?? 0}%;background:var(--${cls || "line"})"></div></div>
+      <span class="num">${v.score ?? "–"}</span>
+      <span class="muted small">${v.score === null || v.score === undefined ? "Not measured" : `${word} · ${v.passed}/${v.measured} checks pass · coverage ${v.coverage}%`} · weight ${c.weight}%</span></div>`;
+  }).join("");
+  return section("health", "Website health", "Each category's score is the share of its measured checks that pass. The overall score weights them as shown.", `
+    <div class="card">${rows}</div>
+    ${R.history.length > 1 ? `<div class="card" style="margin-top:12px"><h3>Score across audits</h3><div class="chart" id="history-chart" style="margin-top:8px"></div>
+      <table class="print-only" style="margin-top:8px"><tbody>${R.history.map(h => `<tr><td>${date(h.finished_at)}</td><td class="num">${h.score}</td></tr>`).join("")}</tbody></table></div>` : ""}`);
+}
+
+function criticalSection() {
+  const list = R.findings.filter(f => f.severity === "critical" || f.severity === "high");
+  return section("critical", "Critical and high-priority issues", "The problems most likely to cost you visitors, enquiries or email delivery.",
+    list.length ? list.map(issueCard).join("") : `<div class="card"><b class="up">No critical or high-priority issues.</b></div>`);
+}
+
+function catSection(id, intro, extra = "") {
+  const v = R.categories[id];
+  const own = R.findings.filter(f => f.category === id);
+  const [cls, word] = band(v?.score);
+  const head = v ? `<div class="row" style="margin-bottom:12px"><span class="badge ${cls}">${v.score ?? "–"}/100 · ${word}</span><span class="muted small">${v.passed} of ${v.measured} measured checks pass${v.measured < v.checks ? ` · ${v.checks - v.measured} not measured` : ""}</span></div>` : "";
+  return section(id, catLabel(id), intro, head + (own.length ? own.map(issueCard).join("") : `<div class="card"><b class="up">No issues found in this category.</b></div>`) + extra);
+}
+
+function contentExtra() {
+  const c = R.summary.content, a = R.summary.analysts?.content;
+  if (!c) return `<div style="margin-top:14px">${unavailable({ message: a?.message || "AI content suggestions weren't generated for this audit.", source: "Claude (Anthropic)" })}</div>`;
+  return `<div class="card" style="margin-top:14px">
+    <h3>AI content suggestions</h3><p class="small muted">Drafts to adapt, based on your own pages. Check facts before publishing; no ranking change is guaranteed.</p>
+    ${c.meta_suggestions.length ? `<div class="table-wrap" style="margin-top:10px"><table><thead><tr><th>Page</th><th class="wrap">Suggested title</th><th class="wrap">Suggested description</th></tr></thead><tbody>
+      ${c.meta_suggestions.map(m => `<tr><td class="wrap">${link(m.url, new URL(m.url).pathname)}</td><td class="wrap">${esc(m.title)} <span class="muted small">(${m.title.length})</span></td><td class="wrap">${esc(m.description)} <span class="muted small">(${m.description.length})</span></td></tr>`).join("")}</tbody></table></div>` : ""}
+    ${c.article_ideas.length ? `<h3 style="margin-top:16px">Article ideas</h3>${c.article_ideas.map(x => `<details class="ans"><summary><b>${esc(x.title)}</b> <span class="muted small">· targets “${esc(x.target_query)}”</span></summary><p class="small">${esc(x.why)}</p><ol class="steps-list small">${x.outline.map(o => `<li>${esc(o)}</li>`).join("")}</ol></details>`).join("")}` : ""}
+    ${c.internal_links.length ? `<h3 style="margin-top:16px">Internal links to add</h3><ul class="steps-list small">${c.internal_links.map(l => `<li>On ${link(l.from, new URL(l.from).pathname)}, link “${esc(l.anchor)}” to ${link(l.to, new URL(l.to).pathname)}. <span class="muted">${esc(l.reason)}</span></li>`).join("")}</ul>` : ""}
+    ${c.content_improvements.length ? `<h3 style="margin-top:16px">Improvements to existing pages</h3><ul class="steps-list small">${c.content_improvements.map(x => `<li>${link(x.url, new URL(x.url).pathname)}: ${esc(x.suggestion)}</li>`).join("")}</ul>` : ""}
+    <div class="source">Generated by ${esc(c.source)} from the crawled page text${c.reused_from ? ` during the audit of ${date(c.reused_from)} (weekly audits reuse it for 4 weeks)` : ""}.</div></div>`;
+}
+
+function performanceExtra() {
+  const m = R.modules.performance;
+  if (!m || m.status !== "ok") return `<div style="margin-top:14px">${unavailable(m)}</div>`;
+  const { mobile, desktop } = m.data;
+  const sc = (r, k) => (r?.scores?.[k] ?? "–");
+  const fieldNote = mobile.field ? `Field data: real Chrome users over the last 28 days (${mobile.field.source === "url" ? "this page" : "whole site, not enough data for this page"}).` : "No real-user (field) data: Google doesn't have enough Chrome traffic for this site, so only lab results are shown.";
+  const row = (label, lab, field, good) => `<tr><td>${label}</td><td class="num">${lab}</td><td class="num">${field}</td><td class="num muted">${good}</td></tr>`;
+  return `<div class="grid cols-2" style="margin-top:14px;align-items:start">
+    <div class="card"><h3>Lighthouse scores (lab)</h3><div class="table-wrap"><table style="margin-top:8px"><thead><tr><th></th><th class="num">Mobile</th><th class="num">Desktop</th></tr></thead><tbody>
+      ${[["Performance", "performance"], ["Accessibility", "accessibility"], ["Best practices", "best_practices"], ["SEO", "seo"]].map(([l, k]) => `<tr><td>${l}</td><td class="num">${sc(mobile, k)}</td><td class="num">${sc(desktop, k)}</td></tr>`).join("")}</tbody></table></div></div>
+    <div class="card"><h3>Core Web Vitals (mobile)</h3><div class="table-wrap"><table style="margin-top:8px"><thead><tr><th>Metric</th><th class="num">Lab</th><th class="num">Field p75</th><th class="num">Good</th></tr></thead><tbody>
+      ${row("Largest Contentful Paint", ms(mobile.lab.lcp_ms), ms(mobile.field?.lcp_ms), "≤ 2.5 s")}
+      ${row("Interaction to Next Paint", "<span class=muted>field only</span>", ms(mobile.field?.inp_ms), "≤ 200 ms")}
+      ${row("Cumulative Layout Shift", mobile.lab.cls?.toFixed(2) ?? "–", mobile.field?.cls?.toFixed(2) ?? "–", "≤ 0.1")}
+      ${row("Total Blocking Time", ms(mobile.lab.tbt_ms), "–", "≤ 200 ms")}
+      ${row("First Contentful Paint", ms(mobile.lab.fcp_ms), ms(mobile.field?.fcp_ms), "≤ 1.8 s")}</tbody></table></div><p class="source">${esc(fieldNote)}</p></div>
+  </div>
+  ${mobile.opportunities.length ? `<div class="card" style="margin-top:12px"><h3>What Lighthouse suggests (mobile)</h3><ul class="steps-list small" style="margin-top:6px">${mobile.opportunities.map(o => `<li>${esc(o.title)}${o.display ? ` <span class="muted">· ${esc(o.display)}</span>` : ""}${o.savings_ms ? ` <span class="muted">· ~${ms(o.savings_ms)} potential saving</span>` : ""}</li>`).join("")}</ul></div>` : ""}
+  <p class="source">Source: ${esc(m.source)}, Lighthouse ${esc(mobile.lighthouse_version || "")}. Lab tests run on a simulated mid-range phone and throttled network; real visitors may be faster or slower.</p>`;
+}
+
+function securityExtra() {
+  const f = R.facts;
+  if (!f) return `<div class="unavailable" style="margin-top:14px">The raw headers, certificate and DNS records behind this audit are kept for 45 days (always for your latest audit).</div>`;
+  const h = f.headers || {};
+  const t = f.tls, dm = f.domain;
+  return `<div class="grid cols-2" style="margin-top:14px;align-items:start">
+    <div class="card"><h3>Response headers (homepage)</h3><dl class="kv-list" style="margin-top:8px">${Object.entries(h).filter(([k]) => k !== "x-robots-tag").map(([k, v]) => `<div><dt>${esc(k)}</dt><dd class="${v ? "" : "down"}">${v ? esc(v.length > 60 ? v.slice(0, 60) + "…" : v) : "missing"}</dd></div>`).join("")}</dl></div>
+    <div class="card"><h3>Certificate and domain</h3><dl class="kv-list" style="margin-top:8px">
+      <div><dt>Certificate</dt><dd>${t ? `${t.authorized ? "trusted" : `<span class="down">not trusted</span>`} · ${esc(t.issuer || "")}` : "not inspected"}</dd></div>
+      ${t?.valid_to ? `<div><dt>Valid until</dt><dd class="${t.days_left < 14 ? "down" : ""}">${date(t.valid_to)} (${t.days_left} d)</dd></div>` : ""}
+      <div><dt>HTTP → HTTPS</dt><dd>${f.http_redirect?.toHttps ? "redirects" : f.http_redirect?.measured ? `<span class="down">doesn't redirect</span>` : "not measured"}</dd></div>
+      <div><dt>DNSSEC</dt><dd>${f.dnssec?.signed === true ? "enabled" : f.dnssec?.signed === false ? "not enabled" : "not measured"}</dd></div>
+      ${dm ? `<div><dt>Registrar</dt><dd>${esc(dm.registrar || "–")}</dd></div><div><dt>Registered until</dt><dd class="${dm.days_left <= 30 ? "down" : dm.days_left <= 60 ? "warn" : ""}">${dm.expires ? `${date(dm.expires)} (${dm.days_left} d)` : "–"}</dd></div><div><dt>Nameservers</dt><dd>${esc((dm.nameservers || []).slice(0, 3).join(", ") || "–")}</dd></div>` : `<div><dt>Registration</dt><dd>not available from RDAP</dd></div>`}
+    </dl><p class="source">Sources: TLS handshake from our server, RDAP (rdap.org), DNS over HTTPS.</p></div></div>`;
+}
+
+function emailExtra() {
+  const e = R.facts?.email;
+  if (!e) return `<div style="margin-top:14px">${unavailable({ message: "Email checks need a domain name; this site is an IP address." })}</div>`;
+  return `<div class="card" style="margin-top:14px"><h3>DNS records for ${esc(e.domain)}</h3>
+    <p class="small muted">Email records belong to your organizational domain (${esc(e.domain)})${e.host !== e.domain ? `, not to the web host ${esc(e.host)}` : ""}, so that's where we looked.</p>
+    <dl class="kv-list" style="margin-top:10px">
+      <div><dt>SPF</dt><dd>${e.spf.length ? e.spf.map(esc).join("<br>") : `<span class="down">none on ${esc(e.domain)}</span>`}</dd></div>
+      ${e.spf_subdomains?.length ? `<div><dt>SPF on sending subdomains</dt><dd>${e.spf_subdomains.map(s => `${esc(s.name)}: ${esc(s.record)}`).join("<br>")}</dd></div>` : ""}
+      ${e.dmarc_host_record ? `<div><dt>DMARC at _dmarc.${esc(e.dmarc_host_domain)}</dt><dd>${esc(e.dmarc_host_record)} <span class="muted">(covers @${esc(e.dmarc_host_domain)} only)</span></dd></div>` : ""}
+      ${e.spf_lookups !== null && e.spf_lookups !== undefined ? `<div><dt>SPF DNS lookups</dt><dd class="${e.spf_lookups > 10 ? "down" : ""}">${e.spf_lookups} of 10</dd></div>` : ""}
+      <div><dt>DMARC</dt><dd>${e.dmarc.length ? `${e.dmarc.map(esc).join("<br>")} <span class="muted">(_dmarc.${esc(e.dmarc_domain)})</span>` : `<span class="down">none</span>`}</dd></div>
+      <div><dt>MX</dt><dd>${e.mx.length ? e.mx.map(esc).join("<br>") : "none"}</dd></div>
+      <div><dt>Mailbox provider</dt><dd>${e.provider ? `${esc(e.provider.name)} <span class="muted">(from ${e.provider.via === "mx" ? "MX" : "SPF"}: ${esc(e.provider.evidence)})</span>` : "couldn't be identified from DNS"}</dd></div>
+      ${e.senders?.length ? `<div><dt>Other senders in SPF</dt><dd>${e.senders.map(esc).join(", ")}</dd></div>` : ""}
+      <div><dt>DKIM</dt><dd>${e.dkim_found.length ? `key found at: ${e.dkim_found.map(esc).join(", ")}` : `not found at the ${e.dkim_probed.length} common selectors tested (not proof it's missing)`}</dd></div>
+    </dl><p class="source">Source: DNS over HTTPS (Cloudflare). Alignment of real messages can only be confirmed from a sent email's headers.</p></div>`;
+}
+
+function keywordsSection() {
+  const m = R.modules.keywords;
+  const settings = `<form class="card no-print" id="kw-form" style="margin-top:12px"><h3>Keyword settings</h3>
+    <div class="grid cols-2" style="margin-top:10px">
+      <div class="field"><label for="kw-market">Target country</label><select id="kw-market"><option value="">Choose…</option>${R.settings.markets.map(x => `<option value="${x.code}" ${R.settings.market === x.code ? "selected" : ""}>${esc(x.label)}</option>`).join("")}</select></div>
+      <div class="field"><label for="kw-list">Your main keywords (comma separated, up to 5)</label><input id="kw-list" value="${esc(R.settings.keywords.join(", "))}"></div>
+    </div><button class="btn sm">Save</button> <span class="hint">Used from your next audit.</span></form>`;
+  if (!m || m.status !== "ok") return section("keywords", "Keyword opportunities", "Search volumes, difficulty and your rankings from a keyword data provider.", unavailable(m) + settings);
+  const d = m.data;
+  const table = (rows, cols) => `<div class="table-wrap"><table><thead><tr>${cols.map(c => `<th class="${c[2] || ""}">${c[0]}</th>`).join("")}</tr></thead><tbody>${rows.map(r => `<tr>${cols.map(c => `<td class="${c[2] || ""}">${c[1](r)}</td>`).join("")}</tr>`).join("")}</tbody></table></div>`;
+  const opp = R.findings.filter(f => f.category === "keywords");
+  return section("keywords", "Keyword opportunities", `Measured by ${esc(m.source)} on ${date(m.fetched_at)}${m.reused ? " (reused from an earlier audit to keep costs down)" : ""}. Volumes are monthly estimates from the provider; positions are a snapshot.`, `
+    <div class="grid cols-3"><div class="card tile"><div class="label">Search visibility</div><div class="value">${d.visibility_score ?? "–"}<small>${d.visibility_score !== null ? "%" : ""}</small></div><div class="delta">Share of your ranked keywords' search volume where you're on page one.</div></div>
+      <div class="card tile"><div class="label">Keywords you rank for</div><div class="value">${fmt(d.total_ranked)}</div><div class="delta">in ${esc(d.market)}</div></div>
+      <div class="card tile"><div class="label">On page one</div><div class="value">${d.ranked.filter(k => k.position <= 10).length}</div><div class="delta">of the ${d.ranked.length} shown</div></div></div>
+    ${opp.map(issueCard).join("")}
+    <div class="card" style="margin-top:12px"><h3>Keywords you rank for</h3>${table(d.ranked.slice(0, 40), [["Keyword", r => esc(r.keyword), "wrap"], ["Position", r => r.position, "num"], ["Volume", r => fmt(r.volume), "num"], ["Difficulty", r => r.difficulty ?? "–", "num"], ["Intent", r => esc(r.intent || "–")], ["Ranking URL", r => r.url ? link(r.url, new URL(r.url).pathname) : "–", "wrap"]])}</div>
+    <div class="card" style="margin-top:12px"><h3>Related keyword ideas</h3>${table(d.ideas.slice(0, 30), [["Keyword", r => esc(r.keyword), "wrap"], ["Volume", r => fmt(r.volume), "num"], ["Difficulty", r => r.difficulty ?? "–", "num"], ["CPC", r => (r.cpc ? `$${r.cpc.toFixed(2)}` : "–"), "num"], ["Intent", r => esc(r.intent || "–")]])}</div>
+    ${settings}`);
+}
+
+function competitorsSection() {
+  const m = R.modules.competitors;
+  const manage = `<div class="card no-print" style="margin-top:12px" id="comp-manage"><h3>Competitors you track</h3>
+    <p class="small muted">Choose real business competitors: the sites that rank first aren't always your direct competitors. Up to 5. Used from your next audit.</p>
+    <ul class="pill-list" id="comp-list" style="margin-top:10px">${R.settings.competitors.map(c => `<li>${esc(c.hostname)} <button type="button" class="btn ghost sm" data-rm-comp="${esc(c.id)}" aria-label="Remove ${esc(c.hostname)}">×</button></li>`).join("") || `<li class="muted">None yet</li>`}</ul>
+    ${m?.suggestions?.length ? `<p class="small" style="margin-top:10px">Sites that share keywords with you (from DataForSEO): ${m.suggestions.map(s => `<button type="button" class="btn ghost sm" data-add-comp="${esc(s.domain)}">+ ${esc(s.domain)}</button>`).join(" ")}</p>` : ""}
+    <form class="row" id="comp-form" style="margin-top:10px"><input class="input" id="comp-input" placeholder="competitor.com" style="flex:1;min-width:180px" aria-label="Competitor website"><button class="btn sm">Add</button></form></div>`;
+  if (!m || m.status !== "ok") return section("competitors", "Competitor analysis", "We run the same homepage checks on the competitors you choose.", unavailable(m) + manage);
+  const d = m.data, sites = d.sites.filter(s => !s.error);
+  const cats = R.category_meta.filter(c => c.weight);
+  const cell = v => (v === null || v === undefined ? "–" : v);
+  const capped = v => (v === null || v === undefined ? "–" : v >= 500 ? "500+" : v); // sitemaps are read up to 500 URLs
+  const gaps = R.findings.filter(f => f.category === "competitors");
+  return section("competitors", "Competitor analysis", `Homepage checks run by HeyRanks on ${date(m.fetched_at)}. Scores use the same method as yours.`, `
+    ${gaps.map(issueCard).join("")}
+    <div class="card" style="margin-top:12px"><h3>Side by side</h3><div class="table-wrap"><table style="margin-top:8px"><thead><tr><th></th><th class="num">You</th>${sites.map(s => `<th class="num">${esc(s.host)}</th>`).join("")}</tr></thead><tbody>
+      <tr><td><b>Homepage score</b></td><td class="num"><b>${cell(d.self.score)}</b></td>${sites.map(s => `<td class="num">${cell(s.score)}</td>`).join("")}</tr>
+      ${cats.map(c => `<tr><td>${esc(c.label)}</td><td class="num">${cell(d.self.categories[c.id])}</td>${sites.map(s => `<td class="num">${cell(s.categories[c.id])}</td>`).join("")}</tr>`).join("")}
+      <tr><td>Mobile speed (Lighthouse)</td><td class="num">${cell(d.self.speed)}</td>${sites.map(s => `<td class="num">${cell(s.speed)}</td>`).join("")}</tr>
+      <tr><td>Pages in sitemap</td><td class="num">${capped(d.self.sitemap_urls)}</td>${sites.map(s => `<td class="num">${capped(s.structure.sitemap_urls)}</td>`).join("")}</tr>
+      <tr><td>Homepage words</td><td class="num">${fmt(d.self.words)}</td>${sites.map(s => `<td class="num">${fmt(s.words)}</td>`).join("")}</tr>
+      ${sites.some(s => s.keyword_overlap) ? `<tr><td>Keywords in common</td><td class="num">–</td>${sites.map(s => `<td class="num">${s.keyword_overlap?.shared ?? "–"}</td>`).join("")}</tr>` : ""}
+    </tbody></table></div></div>
+    <div class="grid cols-2" style="margin-top:12px;align-items:start">${sites.map(s => `<div class="card"><h3>${esc(s.host)}</h3>
+      <p class="small muted" style="margin-top:4px">Structured data: ${esc(s.schema_types.join(", ") || "none")}</p>
+      ${s.topics.length ? `<p class="small" style="margin-top:8px"><b>Homepage topics:</b> ${s.topics.map(esc).join(" · ")}</p>` : ""}
+      ${s.structure.nav.length ? `<p class="small" style="margin-top:8px"><b>Key pages linked:</b> ${s.structure.nav.slice(0, 8).map(n => esc(n.text)).join(" · ")}</p>` : ""}
+      ${s.keyword_overlap?.examples?.length ? `<p class="small" style="margin-top:8px"><b>Shared keywords:</b> ${s.keyword_overlap.examples.map(esc).join(", ")}</p>` : ""}</div>`).join("")}</div>
+    ${d.sites.filter(s => s.error).map(s => `<p class="small muted">${esc(s.host)}: ${esc(s.error)}</p>`).join("")}
+    <p class="source">Source: ${esc(m.source)}.</p>${manage}`);
+}
+
+function visibilitySection() {
+  const m = R.modules.ai_visibility;
+  const form = `<form class="card no-print" id="vis-form" style="margin-top:12px"><h3>AI visibility settings</h3>
+    <div class="field" style="margin-top:10px"><label for="vis-brand">Business name as customers say it</label><input id="vis-brand" value="${esc(R.settings.brand || "")}" placeholder="Sunrise Dental"></div>
+    <div class="field"><label for="vis-q">Questions your customers ask (one per line, up to 5)</label><textarea id="vis-q" rows="4" style="width:100%;padding:10px;border:1.5px solid var(--line);border-radius:10px;background:var(--surface)">${esc(R.settings.ai_questions.join("\n"))}</textarea>
+      <div class="hint">If empty, we ask about your keywords. Used from your next audit.</div></div><button class="btn sm">Save</button></form>`;
+  if (!m || !["ok", "partial"].includes(m.status)) return section("ai_visibility", "AI search visibility", "Whether AI assistants name your business when asked your customers' questions.", unavailable(m) + form);
+  const d = m.data;
+  const brandQ = d.results.filter(r => r.brand_question && !r.error);
+  const sentiments = d.results.filter(r => r.sentiment);
+  return section("ai_visibility", "AI search visibility", `Asked on ${date(m.fetched_at)}${m.reused ? " (reused from an earlier audit to keep costs down)" : ""} through each provider's API. Consumer apps with web search, memory or personalisation can answer differently, and answers change over time.`, `
+    <div class="grid cols-3">
+      <div class="card tile"><div class="label">Mentioned in answers</div><div class="value">${d.score ?? "–"}<small>${d.score !== null ? "%" : ""}</small></div><div class="delta">${d.providers.reduce((s, p) => s + p.mentioned, 0)} of ${d.sample_size} answers · confidence <b>${esc(d.confidence)}</b> (small sample)</div></div>
+      <div class="card tile"><div class="label">Assistants asked</div><div class="value">${d.providers.length}</div><div class="delta">${d.providers.map(p => esc(p.label)).join(", ")}</div></div>
+      <div class="card tile"><div class="label">Sentiment where mentioned</div><div class="value">${sentiments.length ? sentiments.filter(r => r.sentiment === "positive").length + "<small> positive</small>" : "–"}</div><div class="delta">${d.sentiment === "ok" ? `${sentiments.length} passage${sentiments.length === 1 ? "" : "s"} rated by Claude` : d.sentiment === "unavailable" ? "Not assessed in this report" : "Couldn't be assessed this time"}</div></div>
+    </div>
+    ${R.findings.filter(f => f.category === "ai_visibility").map(issueCard).join("")}
+    <div class="card" style="margin-top:12px"><h3>By assistant</h3><div class="table-wrap"><table style="margin-top:8px"><thead><tr><th>Assistant</th><th>Model</th><th class="num">Answers</th><th class="num">Mentioned you</th><th>Mode</th></tr></thead><tbody>
+      ${d.providers.map(p => `<tr><td>${esc(p.label)}</td><td>${esc(p.model || "–")}</td><td class="num">${p.answered}${p.errors ? ` <span class="muted">(${p.errors} failed)</span>` : ""}</td><td class="num">${p.mentioned}${p.rate !== null ? ` (${p.rate}%)` : ""}</td><td>${p.grounded ? "web search + citations" : "model knowledge"}</td></tr>`).join("")}</tbody></table></div></div>
+    ${d.competitors.length ? `<div class="card" style="margin-top:12px"><h3>Competitors mentioned</h3><div class="table-wrap"><table style="margin-top:8px"><thead><tr><th>Competitor</th><th class="num">Answers mentioning them</th></tr></thead><tbody>${d.competitors.map(c => `<tr><td>${esc(c.domain)}</td><td class="num">${c.mentioned}${c.rate !== null ? ` (${c.rate}%)` : ""}</td></tr>`).join("")}</tbody></table></div></div>` : ""}
+    <div class="card" style="margin-top:12px"><h3>Every answer</h3>${d.results.map(r => `<details class="ans"><summary>${r.error ? `<span class="badge">Failed</span>` : r.brand_mentioned ? `<span class="badge good">Mentioned</span>` : `<span class="badge">Not mentioned</span>`} <b>${esc(r.provider_label)}</b> · ${esc(r.question)}</summary>
+      ${r.error ? `<p class="small muted">${esc(r.error)}</p>` : `<p class="small muted">${esc(r.model || "")} · ${date(r.asked_at)}${r.sentiment ? ` · sentiment: <b>${esc(r.sentiment)}</b>${r.sentiment_reason ? ` (“${esc(r.sentiment_reason)}”)` : ""}` : ""}${r.competitors.length ? ` · competitors named: ${r.competitors.map(esc).join(", ")}` : ""}</p>
+      <blockquote>${esc(r.answer)}</blockquote>${r.citations.length ? `<p class="small">Citations: ${r.citations.map(u => link(u)).join(" · ")}</p>` : ""}`}</details>`).join("")}</div>
+    ${brandQ.length ? `<p class="source">The “What do you know about…” question checks whether assistants recognise your business; it isn't counted in the mention rate.</p>` : ""}
+    ${form}`);
+}
+
+function backlinksSection() {
+  const m = R.modules.backlinks;
+  if (!m || m.status !== "ok") return section("backlinks", "Backlinks", "Links to your site from other websites, from a backlink data provider.", unavailable(m));
+  const d = m.data, s = d.self;
+  const comp = d.competitors.filter(c => !c.error);
+  return section("backlinks", "Backlinks", `Measured by ${esc(m.source)} on ${date(m.fetched_at)}${m.reused ? " (reused from an earlier audit to keep costs down)" : ""}. “Rank” is DataForSEO's own metric (0–1000), not Domain Authority or Domain Rating.`, `
+    <div class="grid cols-3">
+      <div class="card tile"><div class="label">Referring domains</div><div class="value">${fmt(s.referring_domains)}</div><div class="delta">${d.change_since_last !== null ? `${d.change_since_last >= 0 ? "+" : ""}${d.change_since_last} since the last audit` : "First measurement"}</div></div>
+      <div class="card tile"><div class="label">Backlinks</div><div class="value">${fmt(s.backlinks)}</div><div class="delta">${s.nofollow_links !== null ? `${fmt(s.nofollow_links)} nofollow` : ""}${s.broken_backlinks ? ` · ${fmt(s.broken_backlinks)} pointing to broken pages` : ""}</div></div>
+      <div class="card tile"><div class="label">Profile vs competitors</div><div class="value">${d.score ?? "–"}${d.score !== null ? "<small>/100</small>" : ""}</div><div class="delta">${d.score !== null ? "Your referring domains as a share of the median tracked competitor's (capped at 100)." : "Add competitors to compare."}</div></div>
+    </div>
+    ${comp.length ? `<div class="card" style="margin-top:12px"><h3>Compared with competitors</h3><div class="table-wrap"><table style="margin-top:8px"><thead><tr><th>Site</th><th class="num">Referring domains</th><th class="num">Backlinks</th><th class="num">Rank</th></tr></thead><tbody>
+      <tr><td><b>You</b></td><td class="num">${fmt(s.referring_domains)}</td><td class="num">${fmt(s.backlinks)}</td><td class="num">${s.rank ?? "–"}</td></tr>
+      ${comp.map(c => `<tr><td>${esc(c.target)}</td><td class="num">${fmt(c.referring_domains)}</td><td class="num">${fmt(c.backlinks)}</td><td class="num">${c.rank ?? "–"}</td></tr>`).join("")}</tbody></table></div></div>` : ""}
+    <div class="grid cols-2" style="margin-top:12px;align-items:start">
+      <div class="card"><h3>Top referring domains</h3><div class="table-wrap"><table style="margin-top:8px"><tbody>${d.top_referring_domains.map(r => `<tr><td>${esc(r.domain)}</td><td class="num">${r.rank ?? "–"}</td></tr>`).join("") || `<tr><td class="muted">None found</td></tr>`}</tbody></table></div></div>
+      <div class="card"><h3>Top anchor texts</h3><div class="table-wrap"><table style="margin-top:8px"><tbody>${d.anchors.map(a => `<tr><td class="wrap">${esc(a.anchor)}</td><td class="num">${fmt(a.backlinks)}</td></tr>`).join("") || `<tr><td class="muted">None found</td></tr>`}</tbody></table></div></div>
+    </div>`);
+}
+
+function roadmapSection() {
+  const weeks = R.summary.roadmap || [];
+  return section("roadmap", "Your 30-day growth roadmap", "Built only from this audit's findings, most important first. Tick tasks off as you go; ticks are kept for the next audit.", weeks.map(w => `
+    <div class="week"><h3>Week ${w.week}: ${esc(w.theme)}</h3>${w.focus ? `<p class="small muted" style="margin-top:2px">${esc(w.focus)}</p>` : ""}
+      ${w.tasks.length ? w.tasks.map(t => `<div class="task ${t.progress === "done" ? "is-done" : ""}">
+        <input type="checkbox" data-task="${esc(t.fingerprint)}" ${t.progress === "done" ? "checked" : ""} aria-label="Mark done: ${esc(t.title)}">
+        <div style="min-width:0"><div>${sevBadge(t.priority)} <a href="#issue=${encodeURIComponent(t.fingerprint)}" data-open="${esc(t.fingerprint)}" class="t-title"><b>${esc(t.title)}</b></a></div>
+          <div class="small" style="margin-top:4px"><b>Do:</b> ${esc(t.action)}</div>
+          <div class="small muted" style="margin-top:2px"><b>Outcome:</b> ${esc(t.outcome)} · <b>Time:</b> ${esc(t.time || "–")}${t.affected.length ? ` · ${t.affected.length} page${t.affected.length === 1 ? "" : "s"}` : ""}</div>
+          <div class="small muted" style="margin-top:2px"><b>Check it worked:</b> ${esc(t.verify || "")}</div></div></div>`).join("") : `<p class="small muted" style="margin-top:6px">Nothing for this week from this audit.</p>`}
+      ${w.more ? `<p class="small muted" style="margin-top:6px">+ ${w.more} more in <a href="#issues">All issues</a>.</p>` : ""}</div>`).join(""));
+}
+
+function issuesSection() {
+  const cats = [...new Set(R.findings.map(f => f.category))];
+  return section("issues", "All issues", "Every finding with its evidence. Click one for the fix, code and how to check it.", `
+    <div class="filters no-print">
+      <input class="input" id="f-q" type="search" placeholder="Search issues or URLs" aria-label="Search issues">
+      <select id="f-sev" aria-label="Severity"><option value="">All severities</option>${Object.entries(SEV).map(([k, v]) => `<option value="${k}">${v[1]}</option>`).join("")}</select>
+      <select id="f-cat" aria-label="Category"><option value="">All categories</option>${cats.map(c => `<option value="${esc(c)}">${esc(catLabel(c))}</option>`).join("")}</select>
+      <select id="f-status" aria-label="Status"><option value="open">Open</option><option value="">All</option><option value="done">Done</option><option value="ignored">Ignored</option></select>
+      <select id="f-sort" aria-label="Sort"><option value="severity">Most severe first</option><option value="affected">Most pages affected</option><option value="category">By category</option></select>
+    </div>
+    <div id="issue-list"></div>`);
+}
+
+function renderIssueList() {
+  const box = document.getElementById("issue-list");
+  if (!box) return;
+  const val = id => document.getElementById(id)?.value || "";
+  const text = val("f-q").toLowerCase(), sev = val("f-sev"), cat = val("f-cat"), status = val("f-status"), sort = val("f-sort");
+  const rank = { critical: 0, high: 1, medium: 2, low: 3, info: 4 };
+  let list = R.findings.filter(f => (!sev || f.severity === sev) && (!cat || f.category === cat) && (!status || f.progress === status)
+    && (!text || [f.title, f.evidence?.detected, ...(f.items || []).map(i => `${i.url || ""} ${i.actual || ""}`)].join(" ").toLowerCase().includes(text)));
+  list = list.sort(sort === "affected" ? (a, b) => (b.items?.length || 0) - (a.items?.length || 0) : sort === "category" ? (a, b) => a.category_label.localeCompare(b.category_label) || rank[a.severity] - rank[b.severity] : (a, b) => rank[a.severity] - rank[b.severity]);
+  box.innerHTML = list.length ? list.map(issueCard).join("") : `<div class="card empty-state"><p>No issues match these filters.</p></div>`;
+}
+
+function evidenceSection() {
+  const p = R.pages, i = R.integrations, s = R.summary;
+  const src = [
+    ["Crawler", `HeyRanksBot read ${s.pages?.crawled ?? "?"} pages${s.pages?.complete ? " (every page it found)" : ` (limit ${s.pages?.limit}; ${s.pages?.queued_left ?? 0} more discovered)`}, respecting robots.txt; ${s.pages?.links_checked ?? 0} extra links checked.`],
+    ["DNS, RDAP, TLS", "DNS over HTTPS (Cloudflare), rdap.org registration data, a TLS handshake from our server."],
+    ["Google PageSpeed Insights", R.modules.performance?.status === "ok" ? "Lighthouse lab tests (mobile + desktop) and Chrome UX Report field data." : `Not available: ${R.modules.performance?.message || ""}`],
+    ["Keyword & backlink data", i.dataforseo.configured ? "DataForSEO." : `Not included in this report${i.dataforseo.needs ? ` (admin: set ${i.dataforseo.needs})` : ""}.`],
+    ["AI visibility", i.ai_visibility.filter(x => x.configured).map(x => x.label).join(", ") || "Not included in this report."],
+    ["AI analysts", i.analysts.configured ? `Claude (${i.analysts.model}): executive summary and content suggestions, from measured findings only.` : "Not included; summaries are written from the findings by HeyRanks."],
+  ];
+  return section("evidence", "Audit evidence and methodology", "", `
+    ${p ? `<div class="card"><h3>Crawled pages (${p.length})</h3><div class="table-wrap"><table style="margin-top:8px"><thead><tr><th>URL</th><th class="num">Status</th><th class="num">Depth</th><th class="wrap">Title</th><th class="num">Words</th><th class="num">Issues</th></tr></thead><tbody>
+      ${p.map(x => `<tr><td class="wrap">${link(x.url, new URL(x.url).pathname + new URL(x.url).search)}${x.noindex ? ` <span class="badge">noindex</span>` : ""}</td><td class="num">${x.status ?? "–"}</td><td class="num">${x.depth ?? "–"}</td><td class="wrap">${esc(x.title || "–")}</td><td class="num">${fmt(x.words)}</td><td class="num">${x.issues || ""}</td></tr>`).join("")}</tbody></table></div></div>`
+      : `<div class="unavailable">Page-level evidence is kept for 45 days (always for your latest audit).</div>`}
+    <div class="card" style="margin-top:12px"><h3>Data sources</h3><dl class="kv-list" style="margin-top:8px">${src.map(([k, v]) => `<div><dt>${esc(k)}</dt><dd style="text-align:right;font-weight:500">${esc(v)}</dd></div>`).join("")}</dl></div>
+    <div class="grid cols-2" style="margin-top:12px;align-items:start">
+      <div class="card"><h3>How scores work</h3><ul class="steps-list small" style="margin-top:6px">${R.methodology.rules.map(r => `<li>${esc(r)}</li>`).join("")}</ul></div>
+      <div class="card"><h3>Limitations</h3><ul class="steps-list small" style="margin-top:6px">${R.methodology.limitations.map(r => `<li>${esc(r)}</li>`).join("")}</ul></div>
+    </div>`);
+}
+
+function detailHtml(f) {
+  const ev = f.evidence || {};
+  const items = f.items || [];
+  const v = f.verified;
+  return `
+    <div class="row" style="margin-bottom:14px">${sevBadge(f.severity)}<span class="badge">${esc(f.category_label)}</span>${f.opportunity ? `<span class="badge good">Opportunity</span>` : ""}</div>
+    <div class="row no-print" style="margin-bottom:16px" role="group" aria-label="Status">
+      ${["open", "done", "ignored"].map(s => `<button type="button" class="btn sm ${f.progress === s ? "primary" : "ghost"}" data-status="${s}" aria-pressed="${f.progress === s}">${{ open: "Open", done: "Mark done", ignored: "Ignore" }[s]}</button>`).join("")}
+      ${f.opportunity ? "" : `<button type="button" class="btn sm accent" data-recheck>Re-check now</button>`}
+    </div>
+    <div id="recheck-result">${v ? recheckHtml(v, f.verified_at) : ""}</div>
+    <div class="dr-block"><h3>What we found</h3><dl class="evidence">
+      ${ev.detected ? `<dt>Detected</dt><dd>${esc(ev.detected)}</dd>` : ""}
+      ${ev.expected ? `<dt>Expected</dt><dd>${esc(ev.expected)}</dd>` : ""}
+      ${ev.actual ? `<dt>Actual</dt><dd>${esc(ev.actual)}</dd>` : ""}
+      ${f.subject ? `<dt>Applies to</dt><dd>${esc(f.subject)}</dd>` : ""}
+      ${ev.source ? `<dt>Source</dt><dd>${esc(ev.source)}</dd>` : ""}</dl></div>
+    ${items.length ? `<div class="dr-block"><h3>Affected (${items.length}${items.length >= 50 ? "+" : ""})</h3><div class="table-wrap"><table><tbody>${items.map(i => `<tr><td class="wrap">${i.url ? link(i.url) : ""}${i.keyword && !i.url ? esc(i.keyword) : ""}<div class="small muted">${esc(i.actual || "")}${i.from?.length ? ` · linked from ${i.from.slice(0, 3).map(u => esc(new URL(u).pathname)).join(", ")}` : ""}${i.files?.length ? `<br>${i.files.map(esc).join("<br>")}` : ""}${i.examples?.length ? `<br>e.g. ${i.examples.map(esc).join(", ")}` : ""}</div></td></tr>`).join("")}</tbody></table></div></div>` : ""}
+    ${f.why ? `<div class="dr-block"><h3>Why it matters</h3><p>${esc(f.why)}</p></div>` : ""}
+    ${f.impact ? `<div class="dr-block"><h3>Business impact</h3><p>${esc(f.impact)}</p></div>` : ""}
+    ${f.steps?.length ? `<div class="dr-block"><h3>How to fix it</h3><ol class="steps-list">${f.steps.map(s => `<li>${esc(s)}</li>`).join("")}</ol></div>` : ""}
+    ${f.code ? `<div class="dr-block"><h3>Code / DNS example</h3><div class="code"><button type="button" data-copy class="no-print">Copy</button><pre>${esc(f.code)}</pre></div></div>` : ""}
+    <div class="dr-block"><dl class="kv-list"><div><dt>Estimated time</dt><dd>${esc(f.time || "–")}</dd></div><div><dt>Who can do it</dt><dd>${esc(f.expertise || "–")}</dd></div></dl></div>
+    ${f.verify ? `<div class="dr-block"><h3>How to check it's fixed</h3><p>${esc(f.verify)}</p></div>` : ""}
+    ${f.refs?.length ? `<div class="dr-block"><h3>References</h3><ul class="steps-list">${f.refs.map(r => `<li>${link(r.url, r.label)}</li>`).join("")}</ul></div>` : ""}`;
+}
+
+function recheckHtml(v, at) {
+  if (!v.supported) return `<div class="alert info">${esc(v.message || "This can't be re-checked on its own.")}</div>`;
+  const list = v.details?.some(d => d.url || d.actual) ? `<ul class="steps-list small" style="margin-top:6px">${v.details.slice(0, 5).map(d => `<li>${d.url ? `<span class="url">${esc(d.url)}</span>: ` : ""}${esc(d.actual || "")}</li>`).join("")}</ul>` : "";
+  if (v.passing === null) return `<div class="alert info"><b>Not confirmed yet.</b> Re-checked ${ago(at || v.at)}: ${v.checked ? `${v.checked} item${v.checked === 1 ? "" : "s"} measured, but ` : ""}some of it couldn't be measured right now (blocked, rate-limited or timed out). Try again later.${list}</div>`;
+  return `<div class="alert ${v.passing ? "ok" : "error"}"><b>${v.passing ? "Fixed." : "Still failing."}</b> Re-checked ${ago(at || v.at)} on ${v.checked} item${v.checked === 1 ? "" : "s"}.
+    ${v.details?.some(d => d.url) || !v.passing ? list : ""}</div>`;
+}
+
+function printAppendix() {
+  return `<section class="rp-section print-only" id="appendix"><header><h2>Detailed findings</h2></header>${R.findings.filter(f => f.severity !== "info" || f.opportunity).map(f => `<div class="card" style="margin-bottom:12px"><h3>${esc(f.title)}</h3>${detailHtml(f)}</div>`).join("")}</section>`;
+}
+
+// ─── interactions ─────────────────────────────────────────────────────────────
+let current = null, lastFocus = null;
+function openIssue(fp) {
+  const f = R.findings.find(x => x.fingerprint === fp);
+  if (!f) return;
+  current = f; lastFocus = document.activeElement;
+  document.getElementById("dr-kicker").textContent = `${f.category_label} · ${R.audit.hostname}`;
+  document.getElementById("dr-title").textContent = f.title;
+  document.getElementById("dr-body").innerHTML = detailHtml(f);
+  document.getElementById("drawer").classList.add("open");
+  document.getElementById("drawer-bg").classList.add("open");
+  history.replaceState(null, "", `#issue=${encodeURIComponent(fp)}`);
+  document.getElementById("dr-close").focus();
+}
+function closeDrawer() {
+  document.getElementById("drawer").classList.remove("open");
+  document.getElementById("drawer-bg").classList.remove("open");
+  if (location.hash.startsWith("#issue=")) history.replaceState(null, "", location.pathname + location.search);
+  current = null; lastFocus?.focus();
+}
+document.getElementById("dr-close").addEventListener("click", closeDrawer);
+document.getElementById("drawer-bg").addEventListener("click", closeDrawer);
+document.addEventListener("keydown", e => { if (e.key === "Escape" && current) closeDrawer(); });
+
+async function setProgress(fp, status) {
+  await api(`sites/${siteId}/findings`, { method: "PATCH", body: { fingerprint: fp, status } });
+  const f = R.findings.find(x => x.fingerprint === fp);
+  if (f) f.progress = status;
+  for (const w of R.summary.roadmap || []) for (const t of w.tasks) if (t.fingerprint === fp) t.progress = status;
+  refresh(fp);
+}
+function refresh(fp) {
+  const f = R.findings.find(x => x.fingerprint === fp);
+  document.querySelectorAll(`.issue[data-fp="${CSS.escape(fp)}"]`).forEach(el => el.outerHTML = issueCard(f));
+  document.querySelectorAll(`[data-task="${CSS.escape(fp)}"]`).forEach(el => { el.checked = f.progress === "done"; el.closest(".task").classList.toggle("is-done", f.progress === "done"); });
+  if (current?.fingerprint === fp) document.getElementById("dr-body").innerHTML = detailHtml(f);
+}
+
+function bindReport() {
+  const main = document.getElementById("main");
+  main.addEventListener("click", async e => {
+    const card = e.target.closest(".issue[data-fp]");
+    if (card) return openIssue(card.dataset.fp);
+    const open = e.target.closest("[data-open]");
+    if (open) { e.preventDefault(); return openIssue(open.dataset.open); }
+    if (e.target.closest("[data-print]")) return window.print();
+    if (e.target.id === "new-audit") {
+      e.target.disabled = true;
+      try { const r = await api(`sites/${siteId}/audits`, { method: "POST", body: {} }); auditId = r.audit.id; R = null; load(); }
+      catch (err) { toast(err.message); e.target.disabled = false; }
+      return;
+    }
+    const rm = e.target.closest("[data-rm-comp]");
+    if (rm) { const r = await api(`sites/${siteId}/competitors/${rm.dataset.rmComp}`, { method: "DELETE", body: {} }); R.settings.competitors = r.competitors; return rerenderCompetitors(); }
+    const add = e.target.closest("[data-add-comp]");
+    if (add) return addCompetitor(add.dataset.addComp);
+  });
+  main.addEventListener("change", e => {
+    const t = e.target.closest("[data-task]");
+    if (t) setProgress(t.dataset.task, t.checked ? "done" : "open").catch(err => { toast(err.message); t.checked = !t.checked; });
+    if (["f-sev", "f-cat", "f-status", "f-sort"].includes(e.target.id)) renderIssueList();
+  });
+  main.addEventListener("input", e => { if (e.target.id === "f-q") renderIssueList(); });
+  main.addEventListener("submit", async e => {
+    e.preventDefault();
+    try {
+      if (e.target.id === "comp-form") { await addCompetitor(document.getElementById("comp-input").value); return; }
+      if (e.target.id === "kw-form") {
+        const r = await api(`sites/${siteId}`, { method: "PATCH", body: { market: document.getElementById("kw-market").value || null, keywords: document.getElementById("kw-list").value } });
+        Object.assign(R.settings, { market: r.site.market, keywords: r.site.keywords }); toast("Saved. Used from your next audit.");
+      }
+      if (e.target.id === "vis-form") {
+        const r = await api(`sites/${siteId}`, { method: "PATCH", body: { brand: document.getElementById("vis-brand").value, ai_questions: document.getElementById("vis-q").value } });
+        Object.assign(R.settings, { brand: r.site.brand, ai_questions: r.site.ai_questions }); toast("Saved. Used from your next audit.");
+      }
+    } catch (err) { toast(err.message); }
+  });
+}
+async function addCompetitor(website) {
+  try { const r = await api(`sites/${siteId}/competitors`, { method: "POST", body: { website } }); R.settings.competitors = r.competitors; rerenderCompetitors(); toast("Added. Compared from your next audit."); }
+  catch (err) { toast(err.message); }
+}
+function rerenderCompetitors() {
+  const wrap = document.getElementById("competitors");
+  const fresh = document.createElement("div");
+  fresh.innerHTML = competitorsSection();
+  wrap.replaceWith(fresh.firstElementChild);
+}
+
+document.getElementById("dr-body").addEventListener("click", async e => {
+  if (!current) return;
+  const s = e.target.closest("[data-status]");
+  if (s) { try { await setProgress(current.fingerprint, s.dataset.status); toast("Saved."); } catch (err) { toast(err.message); } return; }
+  if (e.target.closest("[data-recheck]")) {
+    const btn = e.target.closest("[data-recheck]");
+    btn.disabled = true; btn.innerHTML = `<span class="spinner"></span> Checking…`;
+    try {
+      const fp = current.fingerprint;
+      const r = await api(`sites/${siteId}/recheck`, { method: "POST", body: { fingerprint: fp } });
+      const f = R.findings.find(x => x.fingerprint === fp);
+      f.verified = r; f.verified_at = r.at;
+      if (r.passing) { f.progress = "done"; for (const w of R.summary.roadmap || []) for (const t of w.tasks) if (t.fingerprint === fp) t.progress = "done"; }
+      refresh(fp);
+    } catch (err) { toast(err.message); btn.disabled = false; btn.textContent = "Re-check now"; }
+  }
+});
+document.addEventListener("click", async e => {
+  const b = e.target.closest("[data-copy]");
+  if (!b) return;
+  try { await navigator.clipboard.writeText(b.nextElementSibling.textContent); b.textContent = "Copied"; setTimeout(() => (b.textContent = "Copy"), 1500); }
+  catch { toast("Select the code and copy it manually."); }
+});
+document.getElementById("pdf").addEventListener("click", () => window.print());
+
+// Highlight the section in view.
+const io = new IntersectionObserver(entries => {
+  for (const en of entries) if (en.isIntersecting) document.querySelectorAll("#nav a").forEach(a => a.setAttribute("aria-current", a.getAttribute("href") === `#${en.target.id}`));
+}, { rootMargin: "-80px 0px -70% 0px" });
+new MutationObserver(() => document.querySelectorAll(".rp-section[id]").forEach(s => io.observe(s))).observe(document.getElementById("main"), { childList: true });
+
+boot();
+</script>
+</body>
+</html>

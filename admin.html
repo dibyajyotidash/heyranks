@@ -115,6 +115,11 @@
           <div id="revenue-list" style="margin-top:14px"></div>
         </div>
       </div>
+
+      <div class="card" style="margin-top:16px">
+        <div class="card-head"><div><h2>External API costs</h2><p id="cost-sub">AI and keyword/backlink data, from recorded usage</p></div></div>
+        <div class="table-wrap"><table><thead><tr><th>Provider</th><th class="num">Calls</th><th class="num">Cost (USD)</th></tr></thead><tbody id="costs"></tbody></table></div>
+      </div>
     </div>
 
     <div class="card" style="margin-top:16px">
@@ -179,6 +184,13 @@ async function loadOverview() {
   const other = o.revenue.filter(r => r.currency !== cur);
   document.getElementById("revenue-list").innerHTML = other.length
     ? `<p class="small muted">Other currencies (all time): ${other.map(r => `${money(r.total, r.currency)} (${r.n})`).join(" · ")}</p>` : "";
+  const c = o.costs || { by_provider: [], total_usd: 0, audits: 0 };
+  const usd = v => `$${Number(v || 0).toFixed(2)}`;
+  const ah = o.audits || { by_status: {}, stuck: 0 };
+  const health = `Audits started: ${Object.entries(ah.by_status).map(([k, n]) => `${fmt(n)} ${k}`).join(", ") || "none"}${ah.stuck ? ` · ${fmt(ah.stuck)} waiting over an hour` : ""}${ah.continuation === false ? " · self-continuation off (set SITE_URL and CRON_SECRET)" : ""}.`;
+  document.getElementById("cost-sub").textContent = `Last ${label}: ${usd(c.total_usd)} in total · ${fmt(c.audits)} audits completed · ${usd(c.avg_per_audit_usd)} average and ${usd(c.max_per_audit_usd)} highest per audit. Non-Anthropic AI answers are estimates. ${health}`;
+  document.getElementById("costs").innerHTML = c.by_provider.map(p => `<tr><td>${esc(p.provider)}</td><td class="num">${fmt(p.calls)}</td><td class="num">${usd(p.usd)}</td></tr>`).join("")
+    || `<tr><td colspan="3" class="muted">No paid API calls in this range.</td></tr>`;
 }
 
 async function loadUsers(append = false) {

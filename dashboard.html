@@ -18,6 +18,7 @@
     <select id="site-select" aria-label="Choose a site" class="hidden"></select>
     <span class="spacer"></span>
     <a href="#overview" class="link" data-nav="overview">Overview</a>
+    <a href="/report" class="link" id="report-link">Full report</a>
     <a href="#account" class="link" data-nav="account">Account</a>
     <a href="/admin" class="link hidden hide-sm" id="admin-link">Admin</a>
     <span class="avatar hide-sm" id="avatar" title=""></span>
@@ -51,7 +52,16 @@
         </div>
       </div>
 
+      <div id="alerts"></div>
       <div class="grid cols-4" id="kpis"></div>
+
+      <div class="grid cols-2" style="margin-top:16px;align-items:start">
+        <div class="card" id="audit-card"></div>
+        <div class="card" id="cat-card">
+          <div class="card-head"><div><h2>Health by category</h2><p>From the latest homepage scan. Unmeasured categories don't count against you.</p></div></div>
+          <div id="cat-rows"></div>
+        </div>
+      </div>
 
       <div id="ai-summary-card" class="card hidden" style="margin-top:16px;border-left:4px solid var(--series)">
         <div class="card-head" style="gap:12px">
@@ -179,7 +189,8 @@ function shortLabel(type, start) {
   return { weekly: `${d.getUTCDate()} ${MON[m]}`, monthly: `${MON[m]} ${yy}`, quarterly: `Q${m / 3 + 1} ${yy}`,
     half_yearly: `H${m < 6 ? 1 : 2} ${yy}`, yearly: String(d.getUTCFullYear()) }[type];
 }
-const priority = w => (w >= 15 ? ["bad", "High"] : w >= 10 ? ["warn", "Medium"] : ["good", "Low"]);
+const SEVERITY = { critical: ["bad", "Critical"], high: ["bad", "High"], medium: ["warn", "Medium"], low: ["good", "Low"], info: ["", "Info"] };
+const priority = (w, severity) => SEVERITY[severity] || (w >= 15 ? ["bad", "High"] : w >= 10 ? ["warn", "Medium"] : ["good", "Low"]);
 const deltaHtml = (n, suffix) => n === null || n === undefined ? `<span class="muted">${suffix ? "First scan" : "–"}</span>`
   : `<b class="${n > 0 ? "up" : n < 0 ? "down" : ""}">${n > 0 ? "▲" : n < 0 ? "▼" : "■"} ${Math.abs(n)}</b> ${suffix || ""}`;
 
@@ -194,7 +205,7 @@ async function boot() {
   renderSiteSelect();
   route();
   const q = new URLSearchParams(location.search);
-  const picked = { "180day": "180-Day Pass", lifetime: "Lifetime Founder" }[q.get("plan")];
+  const picked = { "180day": "180-Day Pass" }[q.get("plan")];
   if (picked && me.plan_active === "free") {
     // Came from a paid "Start" button but checkout couldn't open: point at the Plan card instead of dropping the choice.
     toast(`Your account is ready. Finish upgrading to the ${picked} below.`);
@@ -255,9 +266,13 @@ function renderSite() {
   document.getElementById("site-meta").textContent = latest
     ? `Last scanned ${ago(latest.at)} · ${fmt(site.scans_count)} scan${site.scans_count === 1 ? "" : "s"} · tracking since ${date(site.created_at)}${site.status === "paused" ? " · paused" : ""}`
     : "Not scanned yet";
+  document.getElementById("report-link").href = `/report?site=${encodeURIComponent(site.id)}`;
   renderKpis();
   renderFixes();
   renderIntelligence();
+  renderAlerts();
+  renderCategories();
+  renderAudit();
   document.getElementById("passed").innerHTML = latest?.passed.length ? latest.passed.map(p => `<li>${esc(p)}</li>`).join("") : `<li class="muted" style="list-style:none">Nothing passing yet.</li>`;
   document.getElementById("keywords").innerHTML = site.keywords.length ? site.keywords.map(k => `<li>${esc(k)}</li>`).join("") : `<li>No keywords yet</li>`;
 }
@@ -296,28 +311,85 @@ function renderIntelligence() {
   }
 }
 
+function renderAlerts() {
+  const alerts = detail.latest?.details?.alerts || [];
+  document.getElementById("alerts").innerHTML = alerts.map(a =>
+    `<div class="banner warn"><span><span class="badge bad">${esc(SEVERITY[a.severity]?.[1] || a.severity)}</span> <b>${esc(a.title)}.</b> ${esc(a.detected)}</span></div>`).join("");
+}
+
+function renderCategories() {
+  const cats = detail.latest?.details?.scores?.categories;
+  const card = document.getElementById("cat-card");
+  card.classList.toggle("hidden", !cats);
+  if (!cats) return;
+  document.getElementById("cat-rows").innerHTML = Object.values(cats).map(c => {
+    const cls = c.score === null ? "" : scoreClass(c.score);
+    return `<div class="cat-row" style="grid-template-columns:minmax(110px,1.3fr) minmax(60px,2fr) 40px">
+      <span>${esc(c.label)}</span>
+      <div class="meter" role="img" aria-label="${esc(c.label)}: ${c.score ?? "not measured"}"><div style="width:${c.score ?? 0}%;background:var(--${cls || "line"})"></div></div>
+      <span class="num">${c.score ?? `<span class="muted small">n/a</span>`}</span></div>`;
+  }).join("");
+}
+
+const AUDIT_STAGE = { collect: "checking site-wide settings", crawl: "crawling pages", links: "checking links", modules: "gathering competitor and AI data", analyze: "writing your plan" };
+let auditPoll;
+function renderAudit() {
+  const a = detail.audit, box = document.getElementById("audit-card");
+  const paid = me.plan_active !== "free";
+  const report = `/report?site=${encodeURIComponent(detail.site.id)}`;
+  clearTimeout(auditPoll);
+  if (!paid) {
+    box.innerHTML = `<div class="card-head"><div><h2>Full-site audit</h2><p>Up to 50 pages, every issue with evidence and a fix, competitor comparison and a 30-day plan.</p></div><span class="badge">180-Day Pass</span></div>
+      <a href="#account" class="btn primary sm">Upgrade for $10</a>`;
+    return;
+  }
+  if (!a || a.status === "failed" || a.status === "cancelled") {
+    box.innerHTML = `<div class="card-head"><div><h2>Full-site audit</h2><p>${a?.status === "failed" ? `The last audit didn't finish: ${esc(a.error || "")}` : "Crawl up to 50 pages and get every issue with evidence, a fix and a 30-day plan. Takes about 2–5 minutes."}</p></div></div>
+      <button class="btn primary sm" id="start-audit">Run a full audit</button>`;
+    document.getElementById("start-audit").addEventListener("click", startAuditFromDashboard);
+    return;
+  }
+  if (a.status === "queued" || a.status === "running") {
+    box.innerHTML = `<div class="card-head"><div><h2>Full-site audit</h2><p><span class="spinner"></span> Running: ${esc(AUDIT_STAGE[a.stage] || "starting")}${a.stage === "crawl" ? ` (${a.pages_crawled} of up to ${a.page_limit} pages)` : ""}…</p></div><span class="badge live">Running</span></div>
+      <a href="${report}" class="btn ghost sm">Watch progress</a>`;
+    auditPoll = setTimeout(async () => { if (current === detail.site.id) { detail = await api(`sites/${current}`); renderAudit(); } }, 5000);
+    return;
+  }
+  const c = a.counts || {}, cls = scoreClass(a.score);
+  box.innerHTML = `<div class="card-head"><div><h2>Full-site audit</h2><p>${date(a.finished_at)} · ${a.pages_crawled} pages · coverage ${a.coverage}%</p></div><span class="badge ${cls}">${a.score}/100</span></div>
+    <p class="small">${c.critical ? `<b class="down">${c.critical} critical</b>, ` : ""}${c.high ?? 0} high and ${c.medium ?? 0} medium issues.${a.diff ? ` Since the previous audit: <b class="up">${a.diff.resolved} fixed</b>, <b class="down">${a.diff.new} new</b>.` : ""}</p>
+    <div class="row" style="margin-top:12px"><a href="${report}" class="btn primary sm">Open full report</a><button class="btn ghost sm" id="start-audit">Run again</button></div>`;
+  document.getElementById("start-audit").addEventListener("click", startAuditFromDashboard);
+}
+async function startAuditFromDashboard(e) {
+  e.target.disabled = true;
+  try { await api(`sites/${current}/audits`, { method: "POST", body: {} }); detail = await api(`sites/${current}`); renderAudit(); toast("Audit started. It takes about 2–5 minutes."); }
+  catch (err) { toast(err.message); e.target.disabled = false; }
+}
+
 function renderKpis(month) {
   const l = detail.latest;
   const box = document.getElementById("kpis");
   if (!l) { box.innerHTML = ""; return; }
   const cls = scoreClass(l.score);
-  const high = l.issues.filter(i => i.w >= 15).length;
+  const high = l.issues.filter(i => (i.severity ? ["critical", "high"].includes(i.severity) : i.w >= 15)).length;
+  const s = l.details?.scores;
   box.innerHTML = `
     <div class="card tile hero">
-      <div class="row between"><span class="label">Website score</span><span class="badge ${cls}">${scoreWord(l.score)}</span></div>
+      <div class="row between"><span class="label">Homepage health</span><span class="badge ${cls}">${scoreWord(l.score)}</span></div>
       <div class="value">${l.score}<small> /100</small></div>
       <div class="meter" role="img" aria-label="Score ${l.score} out of 100"><div style="width:${l.score}%;background:var(--${cls})"></div></div>
-      <div class="delta">${deltaHtml(l.prev_score === null ? null : l.score - l.prev_score, "since last scan")}</div>
+      <div class="delta">${l.score_method_changed ? "New scoring method on this scan, so there's no comparison with the last one." : deltaHtml(l.prev_score === null ? null : l.score - l.prev_score, "since last scan")}${s?.capped ? " · capped by a critical issue" : ""}</div>
     </div>
     <div class="card tile">
       <div class="label">Checks passing</div>
       <div class="value">${l.passed.length}<small> / ${l.checks}</small></div>
-      <div class="delta">${l.issues.length ? `${l.issues.length} to fix${high ? `, <b class="down">${high} high priority</b>` : ""}` : `<b class="up">All clear</b>`}</div>
+      <div class="delta">${l.issues.length ? `${l.issues.length} to fix${high ? `, <b class="down">${high} high priority</b>` : ""}` : `<b class="up">All clear</b>`}${s ? ` · coverage ${s.coverage}%` : ""}</div>
     </div>
     <div class="card tile">
       <div class="label">Mobile speed</div>
       <div class="value">${l.speed ?? "–"}${l.speed !== null ? "<small> /100</small>" : ""}</div>
-      <div class="delta">${l.speed === null ? "Not measured this time (not part of the score)" : l.speed >= 70 ? "Fast enough for Google · shown, not scored" : "Slower than Google likes (70+) · shown, not scored"}</div>
+      <div class="delta">${l.speed === null ? "Google didn't return a result, so speed isn't counted this time" : l.speed >= 90 ? "Lighthouse lab test · good" : "Lighthouse lab test · part of the Performance score"}</div>
     </div>
     <div class="card tile" id="month-tile">
       <div class="label">This month</div>
@@ -334,7 +406,7 @@ function renderFixes() {
   box.innerHTML = l.issues.map(fixHtml).join("");
 }
 function fixHtml(i) {
-  const [cls, word] = priority(i.w);
+  const [cls, word] = priority(i.w, i.severity);
   return `<div class="fix">
     <div class="fix-head"><span class="badge ${cls}">${word}</span><b>${esc(i.label)}</b></div>
     <p>${esc(i.fix)}</p>
@@ -400,7 +472,7 @@ function renderHistory() {
     <tr class="clickable" tabindex="0" data-report="${esc(r.id)}">
       <td>${esc(r.label)}</td>
       <td class="num"><b>${r.score_end}</b></td>
-      <td class="num ${r.change > 0 ? "up" : r.change < 0 ? "down" : ""}">${signed(r.change)}</td>
+      <td class="num ${r.change > 0 ? "up" : r.change < 0 ? "down" : ""}"${r.method_changed ? ` title="Scoring method changed this period; compared from the first scan with the new method"` : ""}>${signed(r.change)}${r.method_changed ? "*" : ""}</td>
       <td class="num">${r.score_avg}</td>
       <td class="num">${r.score_min}–${r.score_max}</td>
       <td class="num">${r.issues_resolved}</td>
@@ -432,7 +504,7 @@ async function openReport(id) {
       <span class="badge">${r.scans_count} scan${r.scans_count === 1 ? "" : "s"}</span>
     </div>
     <div class="grid cols-3" style="gap:10px">
-      <div class="card tile"><div class="label">Score</div><div class="value">${r.score_end}</div><div class="delta">${deltaHtml(r.change, `from ${r.score_start}`)}</div></div>
+      <div class="card tile"><div class="label">Score</div><div class="value">${r.score_end}</div><div class="delta">${deltaHtml(r.change, `from ${r.score_start}`)}${r.method_changed ? " · from the first scan with the new scoring method" : ""}</div></div>
       <div class="card tile"><div class="label">Average</div><div class="value">${r.score_avg}</div><div class="delta">low ${r.score_min} · high ${r.score_max}</div></div>
       <div class="card tile"><div class="label">Mobile speed</div><div class="value">${r.speed_avg ?? "–"}</div><div class="delta">period average</div></div>
     </div>
@@ -497,7 +569,7 @@ async function renderPlan() {
     return url ? `${esc(url)}${url.includes("?") ? "&" : "?"}prefilled_email=${encodeURIComponent(me.email)}`
       : `mailto:hello@dexosoftsolutions.com?subject=${encodeURIComponent(`Upgrade ${me.email} to ${plan}`)}`;
   };
-  const price = plan => HR.money(config.plans?.[plan]?.price ?? 0, config.currency || "INR");
+  const price = plan => HR.money(config.plans?.[plan]?.price ?? 0, config.currency || "USD");
   const p = me.plan_active;
   document.getElementById("plan-card").innerHTML = `
     <div class="card-head"><div><h2>Plan</h2><p>${p === "free" ? "Free forever. Upgrade any time." : p === "lifetime" ? "Paid once. Reports for life." : `Active until ${date(me.plan_expires_at)}`}</p></div><span class="badge ${p === "free" ? "" : "good"}">${esc(me.plan_label)}</span></div>

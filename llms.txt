@@ -1,22 +1,25 @@
 # HeyRanks
 
-> HeyRanks checks a small business's website for the technical basics that Google and AI assistants rely on, explains each problem in plain English, and gives copy-paste code to fix it. Paid plans rescan every Monday and email a report with up to 5 prioritised fixes. It costs ₹849 one-time for 180 days (26 weekly reports), with a ₹4,149 Lifetime Founder plan limited to 500 customers.
+> HeyRanks checks a small business's website for the technical basics that Google and AI assistants rely on, explains each problem in plain English, and gives copy-paste code to fix it. Paid plans rescan every Monday and email a report with up to 5 prioritised fixes. It costs $10 one-time for 180 days (26 weekly reports), with no auto-renewal.
 
 HeyRanks is a product of DexoSoft Solutions, based in Bhubaneswar, Odisha, India. It suits local businesses (clinics, restaurants, salons, real estate, coaching), e-commerce brands, freelancers and marketing agencies.
 
-## What each scan checks
-- Search basics: HTTPS, page title and meta description length, main heading (H1), mobile viewport, XML sitemap
-- AI-crawler readiness: whether robots.txt lets GPTBot, OAI-SearchBot, ClaudeBot, Google-Extended and PerplexityBot read the site, and whether the site publishes llms.txt
-- Structured data (Schema.org) and social previews (Open Graph)
-- Mobile speed from Google PageSpeed Insights, shown alongside the score but not counted in it
+## What the free homepage scan checks (40 checks)
+- Search basics: HTTPS, title, meta description, headings, canonical, indexability, robots.txt, XML sitemap
+- AI-crawler readiness: whether robots.txt lets GPTBot, OAI-SearchBot, ClaudeBot, Google-Extended and PerplexityBot read the site, llms.txt, and Schema.org business markup
+- Security and domain: HTTPS redirect, SSL certificate, security headers, mixed content, DNSSEC, domain registration expiry
+- Email authentication: SPF, DMARC, DKIM and MX on the real email domain
+- Speed (Google Lighthouse) and simple conversion signals (calls to action, contact details, trust signals, analytics)
 
-## What customers get
-- A score out of 100 and up to 5 prioritised fixes, each with copy-paste code
-- Weekly email reports on paid plans, plus monthly, quarterly, half-yearly and yearly summaries
-- A dashboard with score history and on-demand rescans
+## The $10 full audit
+- Crawls up to 50 pages: broken links, redirect chains, duplicate titles and content, canonicals, thin pages, orphan pages
+- Mobile and desktop Lighthouse scores and real-user Core Web Vitals when available
+- Comparison with competitor websites the customer chooses
+- Every issue with evidence, steps, code, time estimate and a way to verify the fix; a 30-day plan
+- Keyword, backlink and AI-assistant answer data where those data sources are enabled; reports list their sources
 
-## Not included yet
-- Checking what AI assistants say about a business, Google rankings, competitor tracking, Google Business Profile and reviews
+## Scoring
+- Separate category scores; checks that couldn't be measured are left out rather than counted as failures; any critical issue caps the overall score
 
 ## Key facts
 - Free scan available on the homepage
