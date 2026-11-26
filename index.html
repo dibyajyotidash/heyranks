@@ -25,7 +25,7 @@
   "offers":[{"@type":"Offer","name":"180-Day Pass","price":"10","priceCurrency":"USD"}]},
  {"@type":"FAQPage","mainEntity":[
   {"@type":"Question","name":"Why is it only $10?","acceptedAnswer":{"@type":"Answer","text":"Our reports are automated, so we don't need an expensive team for every customer. We'd rather help thousands of small businesses at a fair price than a few at agency rates."}},
-  {"@type":"Question","name":"Does HeyRanks track what ChatGPT says about my business?","acceptedAnswer":{"@type":"Answer","text":"Not yet. Today we check the technical side: whether AI crawlers like GPTBot and ClaudeBot are allowed to read your site, and whether you give them clear, structured information. That makes it easier for AI tools to understand your business, but it doesn't guarantee they'll recommend you, and we won't pretend it does."}},
+  {"@type":"Question","name":"Does HeyRanks track what ChatGPT says about my business?","acceptedAnswer":{"@type":"Answer","text":"Partly. Every scan checks whether AI crawlers like GPTBot and ClaudeBot may read your site and whether you describe your business in a form they understand. Where AI-visibility data is switched on, the full audit also asks AI assistants (through their APIs) the questions your customers ask and records whether you are named, with the exact answers as evidence. API answers can differ from what the consumer apps show, and no one can guarantee an AI will recommend you."}},
   {"@type":"Question","name":"Will it renew automatically?","acceptedAnswer":{"@type":"Answer","text":"No. The 180-Day Pass is a one-time payment. When it ends, you can choose to renew or not. We'll never charge you without asking."}},
   {"@type":"Question","name":"Do I need technical skills?","acceptedAnswer":{"@type":"Answer","text":"No. Every task is explained in plain language, and code fixes come ready to copy and paste. If you have a developer, just forward them the report."}},
   {"@type":"Question","name":"Do you guarantee rankings?","acceptedAnswer":{"@type":"Answer","text":"No honest service can guarantee Google rankings or what an AI will say. We guarantee useful, specific weekly guidance. If the first 4 reports don't help, you get a full refund."}},
@@ -107,6 +107,10 @@ nav .wrap{display:flex;align-items:center;justify-content:space-between;height:6
 .scan-score b{font-family:Fraunces,serif;font-size:3rem;line-height:1}
 .scan-score span{color:var(--muted)}
 .scan-sub{color:var(--muted);font-size:.88rem;margin:4px 0 8px}
+.scan-cats{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:6px;margin:12px 0}
+.scan-cat{display:flex;justify-content:space-between;gap:8px;background:#f8fafc;border-radius:10px;padding:8px 12px;font-size:.84rem}
+.scan-alert{background:#fee2e2;color:#991b1b;border-radius:10px;padding:10px 12px;font-size:.86rem;margin:8px 0}
+.scan-premium{background:#ecfccb;border-radius:12px;padding:12px 14px;font-size:.86rem;margin-top:14px;color:#1f2937}
 .preview .btn{display:inline-flex}
 .btn:disabled{opacity:.6;cursor:wait}
 
@@ -290,7 +294,7 @@ footer a:hover{color:var(--ink)}
   <div class="wrap">
     <div><b>26</b><span>weekly reports in 180 days</span></div>
     <div><b>$0.38</b><span>per report, less than a coffee</span></div>
-    <div><b>11</b><span>checks on every scan</span></div>
+    <div><b>40</b><span>checks on every homepage scan</span></div>
     <div><b>5</b><span>AI crawlers checked for access</span></div>
   </div>
 </div>
@@ -314,7 +318,7 @@ footer a:hover{color:var(--ink)}
     </div>
     <div class="steps">
       <div class="step"><div class="n">01</div><h3>Enter your site</h3><p>Add your website. It takes 60 seconds, and your first scan runs straight away.</p></div>
-      <div class="step"><div class="n">02</div><h3>We check 11 things</h3><p>HTTPS, page title, description, heading, mobile setup, structured data, social previews, sitemap, llms.txt, AI-crawler access and mobile speed.</p></div>
+      <div class="step"><div class="n">02</div><h3>We run 40 checks</h3><p>Search basics, AI-crawler access, speed, security headers, SSL, domain expiry and email authentication (SPF, DMARC). The $10 full audit crawls up to 50 pages for 55+ checks.</p></div>
       <div class="step"><div class="n">03</div><h3>You fix up to 5 things</h3><p>Your Monday report lists up to 5 fixes, most important first, each with code to copy. Fix them and watch your score climb.</p></div>
     </div>
   </div>
@@ -333,7 +337,7 @@ footer a:hover{color:var(--ink)}
       <div class="r-head"><div><b>Week 6 report</b><br><small>sunrise-dental.example</small></div><small>Monday morning</small></div>
       <div class="scores">
         <div class="sc"><b>45</b><small>Score / 100</small><div class="up">▲ 6</div></div>
-        <div class="sc"><b>6/11</b><small>Checks passing</small></div>
+        <div class="sc"><b>24/40</b><small>Checks passing</small></div>
         <div class="sc"><b>88</b><small>Mobile speed</small></div>
         <div class="sc"><b>2</b><small>Fixed this month</small></div>
       </div>
@@ -358,11 +362,13 @@ footer a:hover{color:var(--ink)}
       <div class="ft"><div class="ic" style="background:#e0ecff">🔎</div><h3>Search basics</h3><p>HTTPS, page title and description length, main heading, mobile viewport and XML sitemap.</p></div>
       <div class="ft"><div class="ic" style="background:#fff1eb">🤖</div><h3>AI-crawler readiness</h3><p>Whether your robots.txt lets GPTBot, OAI-SearchBot, ClaudeBot, Google-Extended and PerplexityBot read your site, and whether you publish an llms.txt summary.</p></div>
       <div class="ft"><div class="ic" style="background:#ecfccb">🧩</div><h3>Structured data & previews</h3><p>Schema.org markup so machines understand your business, and Open Graph tags so shared links look right.</p></div>
-      <div class="ft"><div class="ic" style="background:#fef3c7">⚡</div><h3>Mobile speed</h3><p>Google PageSpeed's mobile score when Google answers. Shown next to your score, not counted in it.</p></div>
-      <div class="ft"><div class="ic" style="background:#dcfce7">📋</div><h3>Copy-paste fixes</h3><p>Ready-to-use code for titles, descriptions, schema, llms.txt, robots.txt, Open Graph and sitemaps.</p></div>
-      <div class="ft"><div class="ic" style="background:#f1f5f9">📈</div><h3>Progress over time</h3><p>Score history, plus weekly, monthly, quarterly, half-yearly and yearly reports showing what you fixed and what's new.</p></div>
+      <div class="ft"><div class="ic" style="background:#fef3c7">⚡</div><h3>Speed & Core Web Vitals</h3><p>Google Lighthouse lab tests, plus real-user Core Web Vitals (LCP, INP, CLS) when Google has enough data. Lab and field results are labelled separately.</p></div>
+      <div class="ft"><div class="ic" style="background:#fee2e2">🔒</div><h3>Security & domain</h3><p>HTTPS and redirects, SSL certificate expiry, security headers, mixed content, DNSSEC, and an alert before your domain registration runs out.</p></div>
+      <div class="ft"><div class="ic" style="background:#e0f2fe">✉️</div><h3>Email authentication</h3><p>SPF, DMARC and DKIM checked on your real email domain, with fixes for your actual email provider, never a second SPF record.</p></div>
+      <div class="ft"><div class="ic" style="background:#dcfce7">📋</div><h3>Fixes with evidence</h3><p>Every issue shows what we found, why it matters, the steps and code to fix it, how long it takes, and how to check it worked.</p></div>
+      <div class="ft"><div class="ic" style="background:#f1f5f9">📈</div><h3>Progress over time</h3><p>Score history, weekly to yearly reports, a 30-day plan you can tick off, and a re-check button for each fix.</p></div>
     </div>
-    <p style="margin-top:22px;color:var(--muted);font-size:.92rem;max-width:760px">Not included yet: checking what AI assistants actually say about you, Google rankings, competitor tracking and Google Business Profile. Being readable by AI crawlers makes it easier for AI tools to understand your site, but it doesn't guarantee they'll recommend you.</p>
+    <p style="margin-top:22px;color:var(--muted);font-size:.92rem;max-width:760px">The $10 full audit crawls up to 50 pages and compares you with the competitors you choose. Keyword rankings, backlink data and AI-assistant answers are added to reports where those data sources are switched on, and every report lists the sources it used: nothing is shown that wasn't measured. Not included: Google Business Profile and reviews. Being readable by AI crawlers makes it easier for AI tools to understand your site, but it doesn't guarantee they'll recommend you.</p>
   </div>
 </section>
 
@@ -465,7 +471,7 @@ footer a:hover{color:var(--ink)}
     <div class="sec-head"><div class="mono">FAQ</div><h2>Questions, answered</h2></div>
     <div class="faq">
       <details open><summary>Why is it only $10?</summary><p>Our reports are automated, so we don't need an expensive team for every customer. We'd rather help thousands of small businesses at a fair price than a few at agency rates.</p></details>
-      <details><summary>Does HeyRanks track what ChatGPT says about my business?</summary><p>Not yet. Today we check the technical side: whether AI crawlers like GPTBot and ClaudeBot are allowed to read your site, and whether you give them clear, structured information. That makes it easier for AI tools to understand your business, but it doesn't guarantee they'll recommend you, and we won't pretend it does.</p></details>
+      <details><summary>Does HeyRanks track what ChatGPT says about my business?</summary><p>Partly. Every scan checks whether AI crawlers like GPTBot and ClaudeBot may read your site and whether you describe your business in a form they understand. Where AI-visibility data is switched on, the full audit also asks AI assistants (through their APIs) the questions your customers ask and records whether you are named, with the exact answers as evidence. API answers can differ from what the consumer apps show, and no one can guarantee an AI will recommend you.</p></details>
       <details><summary>Will it renew automatically?</summary><p>No. The 180-Day Pass is a one-time payment. When it ends, you can choose to renew or not. We'll never charge you without asking.</p></details>
       <details><summary>Do I need technical skills?</summary><p>No. Every task is explained in plain language, and code fixes come ready to copy and paste. If you have a developer, just forward them the report.</p></details>
       <details><summary>Do you guarantee rankings?</summary><p>No honest service can guarantee Google rankings or what an AI will say. We guarantee useful, specific weekly guidance. If the first 4 reports don't help, you get a full refund.</p></details>
@@ -528,11 +534,18 @@ document.getElementById('scan').addEventListener('submit',async e=>{
       d=await r.json().catch(()=>null);
     }finally{clearTimeout(timer)}
     if(!r.ok||!d) throw new Error(d?.error||"We couldn't finish the scan right now. Please try again in a minute.");
-    const col=d.score>=75?'#16a34a':d.score>=45?'#d97706':'#dc2626';
-    out.innerHTML=`<div class="scan-score"><b style="color:${col}">${d.score}</b><span>/100 free scan score</span></div>
-      <div class="scan-sub">${d.passed.length} checks passed · ${d.top_issues.length+d.more_issues} need work</div>
-      ${d.top_issues.map((x,i)=>`<div class="task"><i class="${i?'p2':'p1'}">${i+1}</i><div><b>${esc(x.label)}</b><br>${esc(x.fix)}</div></div>`).join('')}
-      ${d.more_issues?`<div class="scan-sub" style="margin-top:10px">+ ${d.more_issues} more issue${d.more_issues>1?'s':''} in your full report, each with a fix.</div>`:''}
+    const tone=s=>s===null||s===undefined?'#94a3b8':s>=75?'#16a34a':s>=45?'#d97706':'#dc2626';
+    const SEVL={critical:'Critical',high:'High',medium:'Medium',low:'Low'};
+    const alerts=(d.alerts||[]).map(a=>`<div class="scan-alert"><b>${esc(SEVL[a.severity]||'Alert')}: ${esc(a.title)}.</b> ${esc(a.detected)}</div>`).join('');
+    const cats=(d.categories||[]).map(c=>`<div class="scan-cat"><span>${esc(c.label)}</span><b style="color:${tone(c.score)}">${c.score??'n/a'}</b></div>`).join('');
+    const em=d.email?`<div class="scan-sub" style="margin-top:12px">Email for <b>${esc(d.email.domain)}</b>: SPF ${d.email.spf?'✓':'✗'} · DMARC ${d.email.dmarc?'✓':'✗'} · DKIM ${d.email.dkim?'✓':'not confirmed'}${d.email.provider?` · ${esc(d.email.provider)}`:''}</div>`:'';
+    const dom=d.domain&&d.domain.days_left!==null?`<div class="scan-sub">Domain registered until ${esc(new Date(d.domain.expires).toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'}))} (${d.domain.days_left} days)</div>`:'';
+    out.innerHTML=`<div class="scan-score"><b style="color:${tone(d.score)}">${d.score}</b><span>/100 homepage health${d.capped?' (capped by a critical issue)':''}</span></div>
+      <div class="scan-sub">${d.passed.length} checks passed · ${d.top_issues.length+d.more_issues} need work · ${d.coverage}% of checks could be measured</div>
+      ${alerts}<div class="scan-cats">${cats}</div>${em}${dom}
+      ${d.top_issues.map((x,i)=>`<div class="task"><i class="${x.severity==='critical'||x.severity==='high'?'p1':'p2'}">${i+1}</i><div><b>${esc(x.label)}</b> <span style="color:var(--muted);font-size:.8rem">${esc(SEVL[x.severity]||'')} · ${esc(x.category||'')}</span><br>${esc(x.fix)}</div></div>`).join('')}
+      ${d.more_issues?`<div class="scan-sub" style="margin-top:10px">+ ${d.more_issues} more issue${d.more_issues>1?'s':''} on your homepage, each with a fix.</div>`:''}
+      <div class="scan-premium"><b>The $10 full audit goes further:</b> up to 50 pages crawled (broken links, redirects, duplicates, thin pages, canonicals), mobile and desktop Core Web Vitals, comparison with the competitors you choose, a step-by-step fix for every issue with evidence, and a 30-day plan.</div>
       <div class="scan-sub" style="margin-top:12px"><a href="/signup?website=${encodeURIComponent(d.site)}" style="color:var(--accent-ink);font-weight:600">Create a free account</a> to save this scan, see every fix and track your score over time.</div>`;
   }catch(err){
     // Always say the scan didn't work, then show what the weekly report covers.

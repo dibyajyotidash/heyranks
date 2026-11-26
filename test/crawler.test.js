@@ -96,11 +96,16 @@ test("extractPage reads everything the checks need", () => {
   assert.deepEqual(p.analytics, ["Google Analytics / Tag Manager"]);
   assert.equal(p.forms.fields, 2);
   assert.equal(p.forms.unlabelled, 1);
+  const wrapped = extractPage(`<html><body><label class="q"><input type="checkbox"> My site loads fast</label><input aria-label="Search"></body></html>`, "https://example.com/");
+  assert.equal(wrapped.forms.unlabelled, 0, "an input inside its <label> is labelled");
   assert.ok(p.conversion.cta.includes("Book a visit"));
   assert.equal(p.conversion.phones, 1);
   assert.equal(p.conversion.trust, true);
   assert.equal(p.conversion.privacy_link, true);
   assert.ok(!p.text_excerpt.includes("ignore me"), "script contents aren't page text");
+  const js = extractPage('<html><body><a href="/real">Real</a><script>out.innerHTML=`<a href="/signup?website=${x}">x</a><img src="a.png">`</script><template><a href="/tpl">t</a></template></body></html>', "https://example.com/");
+  assert.deepEqual(js.links.internal.map(l => l.url), ["https://example.com/real"], "links inside scripts and templates aren't crawled");
+  assert.equal(js.images.total, 0);
 });
 
 test("near-duplicate detection via MinHash", () => {

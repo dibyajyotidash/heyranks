@@ -82,7 +82,8 @@ globalThis.fetch = async (url, init = {}) => {
   if (REDIRECTS[p.pathname]) return new Response(null, { status: 301, headers: { location: REDIRECTS[p.pathname] } });
   if (p.pathname === "/missing" && missingFixed) return new Response(page("Back", "<h1>Back</h1>"), { headers: { "content-type": "text/html" } });
   const html = PAGES[p.pathname];
-  return html ? new Response(html, { headers: { "content-type": "text/html; charset=utf-8" } }) : new Response("not found", { status: 404, headers: { "content-type": "text/html" } });
+  return html ? new Response(html, { headers: { "content-type": "text/html; charset=utf-8", ...(p.pathname === "/" ? { "x-content-type-options": "nosniff" } : {}) } })
+    : new Response("not found", { status: 404, headers: { "content-type": "text/html" } });
 };
 
 async function call(method, route, { body, cookie } = {}) {
@@ -168,6 +169,8 @@ test("findings reflect the site, with evidence and fix instructions", () => {
   assert.ok(finding("img_alt") && finding("form_labels"));
   assert.ok(finding("perf_score") && finding("lcp") && finding("a11y_score"));
   assert.equal(finding("http_redirect"), undefined, "http:// redirects to https://");
+  assert.equal(finding("x_cto"), undefined, "the homepage's real response headers are evaluated in audits");
+  assert.ok(finding("hsts"), "and headers it doesn't send are still reported");
 });
 
 test("scores, coverage, summary, roadmap and modules", () => {
@@ -236,6 +239,46 @@ test("a second audit reports what changed; cancelled audits stop", async () => {
   assert.equal((await call("POST", `audits/${third}/cancel`, { cookie: paid, body: {} })).status, 200);
   assert.deepEqual(await runAudit(env.DB, env, third), { skipped: true });
   assert.equal((await call("GET", `audits/${third}`, { cookie: paid })).data.audit.status, "cancelled");
+});
+
+test("cost controls: weekly audits reuse recent AI work; past the monthly cap no paid calls are made", async () => {
+  const { startAudit } = await import("../lib/audit.js");
+  const site = await env.DB.prepare("SELECT * FROM sites WHERE id = ?").bind(siteId).first();
+  const before = net.claude.length;
+  const weekly = (await startAudit(env.DB, { site, kind: "weekly" })).audit.id;
+  await runAudit(env.DB, env, weekly);
+  const w = (await call("GET", `audits/${weekly}`, { cookie: paid })).data;
+  assert.equal(w.audit.status, "complete");
+  assert.ok(w.modules.ai_visibility.reused_from, "AI answers reused");
+  assert.equal(w.summary.analysts.strategist.status, "skipped");
+  assert.ok(w.summary.content?.reused_from, "content suggestions carried over");
+  assert.equal(net.claude.length, before, "no new Claude calls for a weekly audit");
+
+  await env.DB.prepare("INSERT INTO usage_events (id, user_id, provider, operation, cost_usd, created_at) VALUES (?, ?, 'anthropic', 'earlier', 5, ?)")
+    .bind(crypto.randomUUID(), site.user_id, new Date().toISOString()).run();
+  await env.DB.prepare("UPDATE audits SET finished_at = ? WHERE site_id = ?").bind(new Date(Date.now() - 40 * 864e5).toISOString(), siteId).run();
+  const capped = (await startAudit(env.DB, { site })).audit.id;
+  const n = net.claude.length, openai = net.calls.filter(c => c.includes("openai")).length;
+  await runAudit(env.DB, env, capped);
+  const c = (await call("GET", `audits/${capped}`, { cookie: paid })).data;
+  assert.equal(c.audit.status, "complete", "the audit still completes");
+  assert.equal(net.claude.length, n, "no Claude calls past the customer's monthly cap");
+  assert.equal(net.calls.filter(x => x.includes("openai")).length, openai, "no other AI provider calls either");
+  assert.match(c.summary.executive_summary_source, /HeyRanks/);
+  assert.ok(c.findings.length, "measured findings are unaffected");
+});
+
+test("dashboard AI summaries respect the monthly cap and are reused while the issues are unchanged", async () => {
+  const { generateAiSummary } = await import("../lib/core.js");
+  const site = await env.DB.prepare("SELECT * FROM sites WHERE id = ?").bind(siteId).first();
+  const scan = { score: 50, passed: [], issues: [{ id: "title", label: "Title", fix: "fix", severity: "medium" }], details: {} };
+  const n = net.claude.length;
+  assert.equal(await generateAiSummary(env.DB, env, site, scan), null, "over this customer's monthly cap (previous test)");
+  assert.equal(net.claude.length, n, "no call was made");
+  await env.DB.prepare(`INSERT INTO scans (id, site_id, user_id, kind, score, issues, details, created_at) VALUES (?, ?, ?, 'manual', 50, ?, ?, ?)`)
+    .bind(crypto.randomUUID(), site.id, site.user_id, JSON.stringify(scan.issues), JSON.stringify({ aiSummary: "Earlier summary." }), new Date().toISOString()).run();
+  assert.equal(await generateAiSummary(env.DB, env, site, scan), "Earlier summary.", "same issues within 24 h: reused");
+  assert.equal(net.claude.length, n);
 });
 
 test("usage costs are recorded for the admin; deleting the site removes its audits", async () => {

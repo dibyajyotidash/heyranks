@@ -49,6 +49,33 @@ test("CRITICAL: SPF/MX are read at the organizational domain, not at www", async
   assert.equal(checks.find(c => c.id === "dmarc").status, "pass");
 });
 
+test("real-world shape (futuregain.in): Resend on send.<domain>, DMARC only on www", async () => {
+  const { dns } = fakeDns({
+    "_dmarc.www.futuregain.in TXT": [q("v=DMARC1; p=none;")],
+    "resend._domainkey.futuregain.in TXT": [q("p=MIGfMA0GCSqGSIb3DQEB")],
+    "send.futuregain.in TXT": [q("v=spf1 include:amazonses.com ~all")],
+  });
+  const e = await analyzeEmail("www.futuregain.in", { dns });
+  assert.deepEqual(e.dmarc.records, [], "the www record doesn't count for @futuregain.in mail");
+  assert.equal(e.dmarc.host_record, "v=DMARC1; p=none;");
+  assert.deepEqual(e.spf.subdomains, [{ name: "send.futuregain.in", record: "v=spf1 include:amazonses.com ~all" }]);
+  assert.ok(e.senders.includes("Resend") && e.senders.includes("Amazon SES"), "senders proven by DKIM selector and subdomain SPF");
+  assert.equal(e.provider, null, "no mailbox provider is claimed without MX/SPF evidence");
+
+  const checks = runChecks({ host: "www.futuregain.in", org: "futuregain.in", email: e, home: { final_url: "https://www.futuregain.in/", headers: {}, page: null }, pages: [] }, "scan");
+  const spf = checks.find(c => c.id === "spf");
+  assert.equal(spf.finding_id, "spf_root");
+  assert.equal(spf.status, "warn");
+  assert.equal(spf.severity, "medium", "DMARC isn't enforced yet, so this matters more");
+  const ctx = { host: "www.futuregain.in", org: "futuregain.in" };
+  const p = presentFinding({ check_id: "spf_root", data: spf.data }, ctx);
+  assert.match(p.code, /v=spf1 -all/);
+  assert.match(p.code, /send\.futuregain\.in/);
+  const dmarc = checks.find(c => c.id === "dmarc");
+  assert.equal(dmarc.finding_id, "dmarc_misplaced");
+  assert.match(presentFinding({ check_id: "dmarc_misplaced", data: dmarc.data }, ctx).code, /Name: _dmarc\s+\(futuregain\.in\)\nv=DMARC1; p=none;/);
+});
+
 test("SPF parsing: syntax errors, qualifiers, modifiers", () => {
   const ok = parseSpf("v=spf1 ip4:203.0.113.0/24 ip6:2001:db8::/32 a mx include:_spf.google.com redirect=_spf.example.com -all");
   assert.deepEqual(ok.errors, []);
