@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Log in — HeyRanks</title>
+<meta name="robots" content="noindex">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='24' height='24' rx='6' fill='%230f1720'/%3E%3Cpath d='M4 18 L9 12 L13 15 L20 6' stroke='%23d9f99d' stroke-width='2.6' fill='none' stroke-linecap='round'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/assets/app.css">
+<script src="/assets/app.js"></script>
+</head>
+<body>
+<div class="auth">
+  <aside class="auth-side">
+    <div>
+      <a href="/" class="logo"><span class="logo-mark"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M4 18 L9 12 L13 15 L20 6" stroke="#d9f99d" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg></span>HeyRanks</a>
+      <h2>Your website's SEO and AI readiness, checked every week</h2>
+      <p>Log in to see your score history, this week's fixes, and your monthly, quarterly and yearly reports.</p>
+      <ul>
+        <li>Weekly, monthly, quarterly, half-yearly and yearly reports</li>
+        <li>Copy-paste code for every fix</li>
+        <li>Rescan any time and see the change</li>
+      </ul>
+    </div>
+    <p class="small" style="color:#64748b">© 2026 HeyRanks · DexoSoft Solutions</p>
+  </aside>
+
+  <main class="auth-main">
+    <div class="auth-box">
+      <h1>Log in</h1>
+      <p class="sub">Welcome back.</p>
+      <div id="msg" role="alert"></div>
+
+      <div id="magic-wait" class="alert info hidden"><span class="spinner"></span>&nbsp; Logging you in…</div>
+
+      <form id="form" novalidate>
+        <div class="field">
+          <label for="email">Email</label>
+          <input id="email" type="email" autocomplete="email" required placeholder="you@business.com">
+        </div>
+        <div class="field">
+          <div class="row between"><label for="password">Password</label><a href="/reset" class="small muted" style="margin-bottom:6px">Forgot password?</a></div>
+          <div class="pw-wrap">
+            <input id="password" type="password" autocomplete="current-password" required>
+            <button type="button" data-toggle="password">Show</button>
+          </div>
+        </div>
+        <button class="btn primary block" id="submit">Log in</button>
+      </form>
+
+      <div class="or">or</div>
+      <button class="btn ghost block" id="magic">Email me a login link</button>
+      <p class="hint" style="text-align:center;margin-top:8px">No password needed. We'll email you a link that logs you in.</p>
+
+      <p class="auth-foot">New to HeyRanks? <a href="/signup">Create a free account</a></p>
+    </div>
+  </main>
+</div>
+
+<script>
+const { api, esc } = HR;
+const params = new URLSearchParams(location.search);
+// Only follow same-site paths, so ?next= can't send people to another website.
+const next = /^\/(?!\/)[\w\-/?=&.%]*$/.test(params.get("next") || "") ? params.get("next") : "/dashboard";
+const msg = document.getElementById("msg");
+const say = (text, kind = "error") => { msg.innerHTML = text ? `<div class="alert ${kind}">${esc(text)}</div>` : ""; };
+
+document.querySelectorAll("[data-toggle]").forEach(b => b.addEventListener("click", () => {
+  const i = document.getElementById(b.dataset.toggle);
+  i.type = i.type === "password" ? "text" : "password";
+  b.textContent = i.type === "password" ? "Show" : "Hide";
+}));
+
+// Already logged in? Go straight on.
+fetch("/api/me", { credentials: "same-origin" }).then(r => { if (r.ok && !params.get("magic")) location.replace(next); });
+
+// Arrived from a login link.
+const token = params.get("magic");
+if (token) {
+  document.getElementById("magic-wait").classList.remove("hidden");
+  history.replaceState(null, "", location.pathname + (params.get("next") ? `?next=${encodeURIComponent(params.get("next"))}` : ""));
+  api("auth/magic/verify", { method: "POST", body: { token } })
+    .then(() => location.replace(next))
+    .catch(e => { document.getElementById("magic-wait").classList.add("hidden"); say(e.message); });
+}
+
+document.getElementById("form").addEventListener("submit", async e => {
+  e.preventDefault();
+  const email = document.getElementById("email").value.trim();
+  const password = document.getElementById("password").value;
+  if (!email || !password) return say("Enter your email and password.");
+  const btn = document.getElementById("submit");
+  btn.disabled = true; btn.textContent = "Logging in…"; say("");
+  try {
+    await api("auth/login", { method: "POST", body: { email, password } });
+    location.replace(next);
+  } catch (err) {
+    say(err.message);
+    btn.disabled = false; btn.textContent = "Log in";
+  }
+});
+
+document.getElementById("magic").addEventListener("click", async () => {
+  const email = document.getElementById("email").value.trim();
+  if (!email) { document.getElementById("email").focus(); return say("Enter your email above first."); }
+  const btn = document.getElementById("magic");
+  btn.disabled = true;
+  try {
+    await api("auth/magic", { method: "POST", body: { email } });
+    say(`If ${email} has an account, a login link is on its way. It expires in 15 minutes.`, "ok");
+  } catch (err) { say(err.message); }
+  btn.disabled = false;
+});
+</script>
+<script src="/assets/track.js" defer></script>
+</body>
+</html>

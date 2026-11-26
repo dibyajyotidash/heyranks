@@ -1,0 +1,604 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dashboard — HeyRanks</title>
+<meta name="robots" content="noindex">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='24' height='24' rx='6' fill='%230f1720'/%3E%3Cpath d='M4 18 L9 12 L13 15 L20 6' stroke='%23d9f99d' stroke-width='2.6' fill='none' stroke-linecap='round'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/assets/app.css">
+<script src="/assets/app.js"></script>
+</head>
+<body>
+<header class="topbar">
+  <div class="in">
+    <a href="/" class="logo"><span class="logo-mark"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M4 18 L9 12 L13 15 L20 6" stroke="#d9f99d" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span class="hide-sm">HeyRanks</span></a>
+    <select id="site-select" aria-label="Choose a site" class="hidden"></select>
+    <span class="spacer"></span>
+    <a href="#overview" class="link" data-nav="overview">Overview</a>
+    <a href="#account" class="link" data-nav="account">Account</a>
+    <a href="/admin" class="link hidden hide-sm" id="admin-link">Admin</a>
+    <span class="avatar hide-sm" id="avatar" title=""></span>
+    <button class="link hide-sm" id="logout">Log out</button>
+  </div>
+</header>
+
+<main class="page">
+  <div id="banners"></div>
+
+  <!-- ─── overview ─── -->
+  <section id="view-overview" class="hidden">
+    <div id="no-sites" class="card empty-state hidden">
+      <h2>Add your first website</h2>
+      <p>We'll scan it right away and show you exactly what to fix for Google and AI assistants.</p>
+      <form class="row" id="first-site-form" style="justify-content:center;max-width:480px;margin:0 auto">
+        <input class="input" id="first-site" aria-label="Your website address" placeholder="yourbusiness.com" style="flex:1;min-width:200px" required>
+        <button class="btn primary">Scan my site →</button>
+      </form>
+    </div>
+
+    <div id="site-view" class="hidden">
+      <div class="page-head">
+        <div>
+          <h1 id="site-name"></h1>
+          <p class="muted small" id="site-meta"></p>
+        </div>
+        <div class="row">
+          <span id="scan-status" class="small muted" role="status" aria-live="polite"></span>
+          <button class="btn primary sm" id="rescan">Rescan now</button>
+        </div>
+      </div>
+
+      <div class="grid cols-4" id="kpis"></div>
+
+      <div id="ai-summary-card" class="card hidden" style="margin-top:16px;border-left:4px solid var(--series)">
+        <div class="card-head" style="gap:12px">
+          <span style="font-size:1.3rem" aria-hidden="true">✦</span>
+          <div>
+            <div class="label" style="text-transform:uppercase;letter-spacing:.06em;font-size:.72rem;color:var(--series);margin-bottom:4px">AI Analysis</div>
+            <p id="ai-summary-text" style="color:var(--ink);line-height:1.6;margin:0"></p>
+          </div>
+        </div>
+      </div>
+
+      <div class="card" style="margin-top:16px">
+        <div class="card-head">
+          <div>
+            <h2>Score history</h2>
+            <p id="history-sub">Your website score at the end of each period. Click a row for the full report.</p>
+          </div>
+          <div class="tabs" role="tablist" id="period-tabs">
+            <button role="tab" data-type="weekly">Weekly</button>
+            <button role="tab" data-type="monthly">Monthly</button>
+            <button role="tab" data-type="quarterly">Quarterly</button>
+            <button role="tab" data-type="half_yearly">Half-yearly</button>
+            <button role="tab" data-type="yearly">Yearly</button>
+          </div>
+        </div>
+        <div class="chart" id="history-chart"></div>
+        <div class="table-wrap" style="margin-top:12px">
+          <table>
+            <thead><tr><th>Period</th><th class="num">Score</th><th class="num">Change</th><th class="num">Average</th><th class="num">Low–high</th><th class="num">Fixed</th><th class="num">New</th><th class="num">Scans</th><th>Status</th></tr></thead>
+            <tbody id="history-rows"></tbody>
+          </table>
+        </div>
+        <button class="btn ghost sm hidden" id="history-more" style="margin-top:12px">Show all periods</button>
+      </div>
+
+      <div class="grid cols-2" style="margin-top:16px;align-items:start">
+        <div class="card">
+          <div class="card-head"><div><h2>Fix these next</h2><p>Ordered by impact. Each fix has code you can copy.</p></div></div>
+          <div id="fixes"></div>
+        </div>
+        <div class="stack">
+          <div class="card">
+            <div class="card-head"><h2>What's working</h2></div>
+            <ul class="check-list" id="passed"></ul>
+          </div>
+          <div class="card">
+            <div class="card-head"><div><h2>Keywords</h2><p>The searches you want to be found for.</p></div><a href="#account" class="small">Edit</a></div>
+            <ul class="pill-list" id="keywords"></ul>
+          </div>
+          <div class="card hidden" id="domain-card">
+            <div class="card-head"><h2>Domain intelligence</h2></div>
+            <dl class="kv-list" id="domain-list"></dl>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ─── account ─── -->
+  <section id="view-account" class="hidden">
+    <div class="page-head"><div><h1>Account</h1><p class="muted small" id="acct-email"></p></div><button class="btn ghost sm" data-logout>Log out</button></div>
+    <div class="grid cols-2" style="align-items:start">
+      <div class="stack">
+        <div class="card">
+          <div class="card-head"><h2>Profile</h2></div>
+          <div id="profile-msg"></div>
+          <form id="profile-form">
+            <div class="field"><label for="p-name">Name</label><input id="p-name" autocomplete="name"></div>
+            <div class="field"><label for="p-company">Business name</label><input id="p-company" autocomplete="organization"></div>
+            <div class="field"><label for="p-whatsapp">WhatsApp number</label><input id="p-whatsapp" type="tel" placeholder="+91 98765 43210"><div class="hint">With country code. Not used yet: reports come by email. We'll only use it for alerts if we add WhatsApp alerts and you turn them on.</div></div>
+            <button class="btn primary sm">Save profile</button>
+          </form>
+        </div>
+        <div class="card">
+          <div class="card-head"><h2 id="pw-title">Password</h2></div>
+          <div id="pw-msg"></div>
+          <form id="pw-form">
+            <div class="field" id="pw-current-field"><label for="pw-current">Current password</label><input id="pw-current" type="password" autocomplete="current-password"></div>
+            <div class="field"><label for="pw-new">New password</label><input id="pw-new" type="password" autocomplete="new-password" minlength="8"><div class="hint">At least 8 characters. Other devices will be logged out.</div></div>
+            <button class="btn primary sm">Update password</button>
+          </form>
+        </div>
+      </div>
+      <div class="stack">
+        <div class="card" id="plan-card"></div>
+        <div class="card">
+          <div class="card-head"><div><h2>Your sites</h2><p id="sites-limit"></p></div></div>
+          <div id="sites-list"></div>
+          <form id="add-site-form" class="row" style="margin-top:14px">
+            <input class="input" id="add-site" aria-label="Another website address" placeholder="anothersite.com" style="flex:1;min-width:180px">
+            <button class="btn sm">Add site</button>
+          </form>
+        </div>
+        <div class="card">
+          <div class="card-head"><div><h2>Delete account</h2><p>Removes your sites, scans and reports for good.</p></div></div>
+          <form id="delete-form" class="row">
+            <input class="input" id="delete-confirm" placeholder="Type your email to confirm" style="flex:1;min-width:180px" autocomplete="off">
+            <button class="btn danger sm">Delete</button>
+          </form>
+        </div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<div class="drawer-bg" id="drawer-bg"></div>
+<aside class="drawer" id="drawer" role="dialog" aria-modal="true" aria-labelledby="dr-title">
+  <div class="row between" style="align-items:flex-start;margin-bottom:16px">
+    <div><div class="muted small" id="dr-kicker"></div><h2 id="dr-title" style="font-size:1.5rem"></h2></div>
+    <button class="btn ghost sm" id="dr-close">Close</button>
+  </div>
+  <div id="dr-body"></div>
+</aside>
+
+<script>
+const { api, esc, fmt, date, ago, toast, initials, scoreClass, scoreWord, signed, lineChart } = HR;
+const TYPE_NAMES = { weekly: "Weekly", monthly: "Monthly", quarterly: "Quarterly", half_yearly: "Half-yearly", yearly: "Yearly" };
+const MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+const store = { get(k) { try { return localStorage.getItem(k); } catch { return null; } }, set(k, v) { try { localStorage.setItem(k, v); } catch {} } };
+
+let me, sites = [], current = null, detail = null, period = store.get("hr-period") || "weekly", reports = [], showAll = false, config = null;
+
+function shortLabel(type, start) {
+  const d = new Date(start + "T00:00:00Z"), m = d.getUTCMonth(), yy = String(d.getUTCFullYear()).slice(2);
+  return { weekly: `${d.getUTCDate()} ${MON[m]}`, monthly: `${MON[m]} ${yy}`, quarterly: `Q${m / 3 + 1} ${yy}`,
+    half_yearly: `H${m < 6 ? 1 : 2} ${yy}`, yearly: String(d.getUTCFullYear()) }[type];
+}
+const priority = w => (w >= 15 ? ["bad", "High"] : w >= 10 ? ["warn", "Medium"] : ["good", "Low"]);
+const deltaHtml = (n, suffix) => n === null || n === undefined ? `<span class="muted">${suffix ? "First scan" : "–"}</span>`
+  : `<b class="${n > 0 ? "up" : n < 0 ? "down" : ""}">${n > 0 ? "▲" : n < 0 ? "▼" : "■"} ${Math.abs(n)}</b> ${suffix || ""}`;
+
+// ─── boot ─────────────────────────────────────────────────────────────────────
+async function boot() {
+  ({ user: me } = await api("me"));
+  ({ sites } = await api("sites"));
+  document.getElementById("avatar").textContent = initials(me);
+  document.getElementById("avatar").title = me.email;
+  document.getElementById("admin-link").classList.toggle("hidden", !me.is_admin);
+  renderBanners();
+  renderSiteSelect();
+  route();
+  const q = new URLSearchParams(location.search);
+  const picked = { "180day": "180-Day Pass", lifetime: "Lifetime Founder" }[q.get("plan")];
+  if (picked && me.plan_active === "free") {
+    // Came from a paid "Start" button but checkout couldn't open: point at the Plan card instead of dropping the choice.
+    toast(`Your account is ready. Finish upgrading to the ${picked} below.`);
+    setTimeout(() => document.getElementById("plan-card")?.scrollIntoView({ block: "center" }), 300);
+  } else if (q.get("welcome")) toast("Welcome to HeyRanks! Check your inbox to confirm your email.");
+  if (q.get("welcome") || q.get("plan")) history.replaceState(null, "", location.pathname + location.hash);
+}
+
+function route() {
+  const view = location.hash === "#account" ? "account" : "overview";
+  document.getElementById("view-overview").classList.toggle("hidden", view !== "overview");
+  document.getElementById("view-account").classList.toggle("hidden", view !== "account");
+  document.querySelectorAll("[data-nav]").forEach(a => a.toggleAttribute("aria-current", a.dataset.nav === view));
+  if (view === "account") renderAccount(); else renderOverview();
+}
+window.addEventListener("hashchange", route);
+
+function renderBanners() {
+  const out = [];
+  if (!me.email_verified) out.push(`<div class="banner info"><span><b>Confirm your email.</b> We sent a link to ${esc(me.email)}. It also switches on any plan you've paid for.</span><button class="btn sm" id="resend">Resend link</button></div>`);
+  if (me.plan_active === "free") out.push(`<div class="banner brand"><span><b>You're on the Free plan.</b> Upgrade for a full report every Monday plus monthly, quarterly and yearly summaries by email.</span><a href="#account" class="btn sm">See plans</a></div>`);
+  if (me.plan_active === "180day" && new Date(me.plan_expires_at) - Date.now() < 14 * 864e5)
+    out.push(`<div class="banner warn"><span><b>Your 180-Day Pass ends ${date(me.plan_expires_at)}.</b> Renew to keep your weekly reports.</span><a href="#account" class="btn sm">Renew</a></div>`);
+  document.getElementById("banners").innerHTML = out.join("");
+  document.getElementById("resend")?.addEventListener("click", async e => {
+    e.target.disabled = true;
+    try { await api("auth/magic", { method: "POST", body: { email: me.email } }); toast("Sent. Check your inbox."); }
+    catch (err) { toast(err.message); e.target.disabled = false; }
+  });
+}
+
+function renderSiteSelect() {
+  const sel = document.getElementById("site-select");
+  sel.classList.toggle("hidden", sites.length < 2);
+  sel.innerHTML = sites.map(s => `<option value="${esc(s.id)}">${esc(s.hostname)}</option>`).join("");
+  const saved = store.get("hr-site");
+  current = sites.find(s => s.id === saved)?.id || sites[0]?.id || null;
+  if (current) sel.value = current;
+}
+document.getElementById("site-select").addEventListener("change", e => {
+  current = e.target.value; store.set("hr-site", current); detail = null; renderOverview();
+});
+
+// ─── overview ─────────────────────────────────────────────────────────────────
+async function renderOverview() {
+  document.getElementById("no-sites").classList.toggle("hidden", sites.length > 0);
+  document.getElementById("site-view").classList.toggle("hidden", !sites.length);
+  if (!current) return;
+  if (!detail || detail.site.id !== current) detail = await api(`sites/${current}`);
+  renderSite();
+  if (!detail.latest) return rescan(true);
+  loadReports();
+}
+
+function renderSite() {
+  const { site, latest } = detail;
+  document.getElementById("site-name").textContent = site.hostname;
+  document.getElementById("site-meta").textContent = latest
+    ? `Last scanned ${ago(latest.at)} · ${fmt(site.scans_count)} scan${site.scans_count === 1 ? "" : "s"} · tracking since ${date(site.created_at)}${site.status === "paused" ? " · paused" : ""}`
+    : "Not scanned yet";
+  renderKpis();
+  renderFixes();
+  renderIntelligence();
+  document.getElementById("passed").innerHTML = latest?.passed.length ? latest.passed.map(p => `<li>${esc(p)}</li>`).join("") : `<li class="muted" style="list-style:none">Nothing passing yet.</li>`;
+  document.getElementById("keywords").innerHTML = site.keywords.length ? site.keywords.map(k => `<li>${esc(k)}</li>`).join("") : `<li>No keywords yet</li>`;
+}
+
+function renderIntelligence() {
+  const d = detail.latest?.details;
+  // AI summary
+  const aiCard = document.getElementById("ai-summary-card");
+  const aiSummary = d?.aiSummary;
+  if (aiSummary) {
+    document.getElementById("ai-summary-text").textContent = aiSummary;
+    aiCard.classList.remove("hidden");
+  } else {
+    aiCard.classList.add("hidden");
+  }
+  // Domain intelligence
+  const domCard = document.getElementById("domain-card");
+  const dom = d?.domain;
+  if (dom) {
+    const rows = [];
+    if (dom.registrar)   rows.push(`<div><dt>Registrar</dt><dd>${esc(dom.registrar)}</dd></div>`);
+    if (dom.age_years !== null) rows.push(`<div><dt>Domain age</dt><dd>${dom.age_years === 0 ? "< 1 year" : `${dom.age_years} yr${dom.age_years === 1 ? "" : "s"}`}</dd></div>`);
+    if (dom.expires) {
+      const cls = dom.days_left !== null && dom.days_left <= 60 ? " class=\"down\"" : dom.days_left !== null && dom.days_left <= 120 ? " class=\"warn\"" : "";
+      rows.push(`<div><dt>Expires</dt><dd${cls}>${date(dom.expires)}${dom.days_left !== null ? ` (${dom.days_left}d)` : ""}</dd></div>`);
+    }
+    if (dom.nameservers?.length) rows.push(`<div><dt>Nameservers</dt><dd>${dom.nameservers.slice(0, 2).map(esc).join(", ")}</dd></div>`);
+    if (rows.length) {
+      document.getElementById("domain-list").innerHTML = rows.join("");
+      domCard.classList.remove("hidden");
+    } else {
+      domCard.classList.add("hidden");
+    }
+  } else {
+    domCard.classList.add("hidden");
+  }
+}
+
+function renderKpis(month) {
+  const l = detail.latest;
+  const box = document.getElementById("kpis");
+  if (!l) { box.innerHTML = ""; return; }
+  const cls = scoreClass(l.score);
+  const high = l.issues.filter(i => i.w >= 15).length;
+  box.innerHTML = `
+    <div class="card tile hero">
+      <div class="row between"><span class="label">Website score</span><span class="badge ${cls}">${scoreWord(l.score)}</span></div>
+      <div class="value">${l.score}<small> /100</small></div>
+      <div class="meter" role="img" aria-label="Score ${l.score} out of 100"><div style="width:${l.score}%;background:var(--${cls})"></div></div>
+      <div class="delta">${deltaHtml(l.prev_score === null ? null : l.score - l.prev_score, "since last scan")}</div>
+    </div>
+    <div class="card tile">
+      <div class="label">Checks passing</div>
+      <div class="value">${l.passed.length}<small> / ${l.checks}</small></div>
+      <div class="delta">${l.issues.length ? `${l.issues.length} to fix${high ? `, <b class="down">${high} high priority</b>` : ""}` : `<b class="up">All clear</b>`}</div>
+    </div>
+    <div class="card tile">
+      <div class="label">Mobile speed</div>
+      <div class="value">${l.speed ?? "–"}${l.speed !== null ? "<small> /100</small>" : ""}</div>
+      <div class="delta">${l.speed === null ? "Not measured this time (not part of the score)" : l.speed >= 70 ? "Fast enough for Google · shown, not scored" : "Slower than Google likes (70+) · shown, not scored"}</div>
+    </div>
+    <div class="card tile" id="month-tile">
+      <div class="label">This month</div>
+      ${month ? `<div class="value">${signed(month.change)}<small> pts</small></div>
+        <div class="delta">${month.issues_resolved} fixed · ${month.issues_new} new · ${month.scans_count} scan${month.scans_count === 1 ? "" : "s"}</div>`
+      : `<div class="value">–</div><div class="delta">Loading…</div>`}
+    </div>`;
+}
+
+function renderFixes() {
+  const l = detail.latest, box = document.getElementById("fixes");
+  if (!l) { box.innerHTML = `<p class="muted">Your fixes appear after the first scan.</p>`; return; }
+  if (!l.issues.length) { box.innerHTML = `<p><b class="up">Nothing to fix.</b> Every check passed on the last scan.</p>`; return; }
+  box.innerHTML = l.issues.map(fixHtml).join("");
+}
+function fixHtml(i) {
+  const [cls, word] = priority(i.w);
+  return `<div class="fix">
+    <div class="fix-head"><span class="badge ${cls}">${word}</span><b>${esc(i.label)}</b></div>
+    <p>${esc(i.fix)}</p>
+    ${i.snippet ? `<details><summary>Show copy-paste fix</summary><div class="code"><button type="button" data-copy>Copy</button><pre>${esc(i.snippet)}</pre></div></details>` : ""}
+  </div>`;
+}
+document.addEventListener("click", async e => {
+  const b = e.target.closest("[data-copy]");
+  if (!b) return;
+  try { await navigator.clipboard.writeText(b.nextElementSibling.textContent); b.textContent = "Copied"; setTimeout(() => (b.textContent = "Copy"), 1500); }
+  catch { toast("Select the code and copy it manually."); }
+});
+
+async function rescan(first = false) {
+  const btn = document.getElementById("rescan"), status = document.getElementById("scan-status");
+  btn.disabled = true;
+  status.innerHTML = `<span class="spinner"></span> ${first ? "Running your first scan" : "Scanning"}… about 20 seconds`;
+  try {
+    const before = detail.latest?.score ?? null;
+    detail = await api(`sites/${current}/scan`, { method: "POST", body: {} });
+    const s = sites.find(x => x.id === current);
+    if (s) { s.score = detail.latest.score; s.scans_count = detail.site.scans_count; }
+    renderSite();
+    loadReports();
+    toast(`Scan complete: ${detail.latest.score}/100${before !== null ? ` (${signed(detail.latest.score - before)})` : ""}`);
+  } catch (err) { toast(err.message); }
+  btn.disabled = false;
+  status.textContent = "";
+}
+document.getElementById("rescan").addEventListener("click", () => rescan());
+
+// ─── period reports ───────────────────────────────────────────────────────────
+document.querySelectorAll("#period-tabs button").forEach(b => b.addEventListener("click", () => {
+  period = b.dataset.type; store.set("hr-period", period); showAll = false; loadReports();
+}));
+
+async function loadReports() {
+  document.querySelectorAll("#period-tabs button").forEach(b => b.setAttribute("aria-selected", b.dataset.type === period));
+  const siteId = current;
+  const [{ reports: list }, monthly] = await Promise.all([
+    api(`sites/${siteId}/reports?type=${period}`),
+    period === "monthly" ? null : api(`sites/${siteId}/reports?type=monthly`),
+  ]);
+  if (siteId !== current) return; // user switched site meanwhile
+  reports = list;
+  const thisMonth = (period === "monthly" ? list : monthly.reports).find(r => r.status === "in_progress");
+  renderKpis(thisMonth || { change: 0, issues_resolved: 0, issues_new: 0, scans_count: 0 });
+  renderHistory();
+}
+
+const PERIOD_NOUN = { weekly: "week", monthly: "month", quarterly: "quarter", half_yearly: "half-year", yearly: "year" };
+function renderHistory() {
+  document.getElementById("history-sub").textContent = reports.length
+    ? `Your score at the end of each ${PERIOD_NOUN[period]}. Click a row for the full report.`
+    : "No reports yet.";
+  const asc = [...reports].reverse();
+  lineChart(document.getElementById("history-chart"),
+    asc.map(r => ({ x: shortLabel(period, r.period_start), tip: r.label + (r.status === "in_progress" ? " (so far)" : ""), y: r.score_end })),
+    { yMax: 100, ticks: [0, 25, 50, 75, 100], height: 230, label: `${TYPE_NAMES[period]} website score`, empty: "Your first report appears after a scan" });
+
+  const rows = showAll ? reports : reports.slice(0, 8);
+  document.getElementById("history-rows").innerHTML = rows.map(r => `
+    <tr class="clickable" tabindex="0" data-report="${esc(r.id)}">
+      <td>${esc(r.label)}</td>
+      <td class="num"><b>${r.score_end}</b></td>
+      <td class="num ${r.change > 0 ? "up" : r.change < 0 ? "down" : ""}">${signed(r.change)}</td>
+      <td class="num">${r.score_avg}</td>
+      <td class="num">${r.score_min}–${r.score_max}</td>
+      <td class="num">${r.issues_resolved}</td>
+      <td class="num">${r.issues_new}</td>
+      <td class="num">${r.scans_count}</td>
+      <td>${r.status === "in_progress" ? `<span class="badge live">In progress</span>` : `<span class="badge">Final</span>`}</td>
+    </tr>`).join("") || `<tr><td colspan="9" class="muted">Reports are created automatically after each scan.</td></tr>`;
+  const more = document.getElementById("history-more");
+  more.classList.toggle("hidden", showAll || reports.length <= 8);
+  more.textContent = `Show all ${reports.length} periods`;
+}
+document.getElementById("history-more").addEventListener("click", () => { showAll = true; renderHistory(); });
+document.getElementById("history-rows").addEventListener("click", e => { const tr = e.target.closest("[data-report]"); if (tr) openReport(tr.dataset.report); });
+document.getElementById("history-rows").addEventListener("keydown", e => { const tr = e.target.closest("[data-report]"); if (tr && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); openReport(tr.dataset.report); } });
+
+// ─── report drawer ────────────────────────────────────────────────────────────
+let lastFocus;
+async function openReport(id) {
+  lastFocus = document.activeElement;
+  const { report: r, previous } = await api(`reports/${id}`);
+  const s = r.summary;
+  document.getElementById("dr-kicker").textContent = `${TYPE_NAMES[r.period_type]} report · ${r.hostname}`;
+  document.getElementById("dr-title").textContent = r.label;
+  const list = (items, empty) => items?.length ? `<ul class="pill-list">${items.map(i => `<li>${esc(i)}</li>`).join("")}</ul>` : `<p class="muted small">${empty}</p>`;
+  document.getElementById("dr-body").innerHTML = `
+    <div class="row" style="margin-bottom:14px">
+      ${r.status === "in_progress" ? `<span class="badge live">In progress</span>` : `<span class="badge">Final</span>`}
+      <span class="badge">${date(r.period_start)} – ${date(new Date(new Date(r.period_end + "T00:00:00Z") - 864e5).toISOString())}</span>
+      <span class="badge">${r.scans_count} scan${r.scans_count === 1 ? "" : "s"}</span>
+    </div>
+    <div class="grid cols-3" style="gap:10px">
+      <div class="card tile"><div class="label">Score</div><div class="value">${r.score_end}</div><div class="delta">${deltaHtml(r.change, `from ${r.score_start}`)}</div></div>
+      <div class="card tile"><div class="label">Average</div><div class="value">${r.score_avg}</div><div class="delta">low ${r.score_min} · high ${r.score_max}</div></div>
+      <div class="card tile"><div class="label">Mobile speed</div><div class="value">${r.speed_avg ?? "–"}</div><div class="delta">period average</div></div>
+    </div>
+    ${previous ? `<p class="small muted" style="margin-top:10px">${esc(previous.label)} ended at ${previous.score_end}. ${r.score_end > previous.score_end ? "This period is higher." : r.score_end < previous.score_end ? "This period is lower." : "Same as this period."}</p>` : ""}
+    ${s.trend?.length > 1 ? `<div class="card" style="margin-top:14px"><h3 style="margin-bottom:8px">Score during this period</h3><div class="chart" id="dr-chart"></div></div>` : ""}
+    <div class="card" style="margin-top:14px">
+      <h3 style="margin-bottom:8px"><span class="up">✓</span> Fixed this period (${r.issues_resolved})</h3>${list(s.resolved, "Nothing fixed in this period.")}
+      <h3 style="margin:16px 0 8px"><span class="down">!</span> New problems (${r.issues_new})</h3>${list(s.new, "No new problems.")}
+      ${s.persistent?.length ? `<h3 style="margin:16px 0 8px">Hardest to shift</h3><ul class="pill-list">${s.persistent.map(p => `<li>${esc(p.label)} · failed ${p.fails}/${s.scans}</li>`).join("")}</ul>` : ""}
+    </div>
+    <div class="card" style="margin-top:14px">
+      <h3 style="margin-bottom:10px">Still open at the end (${r.issues_open})</h3>
+      ${s.open?.length ? s.open.map(fixHtml).join("") : `<p class="up small"><b>Nothing open. Great work.</b></p>`}
+    </div>`;
+  if (s.trend?.length > 1) lineChart(document.getElementById("dr-chart"), s.trend.map(([d, y]) => ({ x: date(d, { day: "numeric", month: "short" }), tip: date(d), y })),
+    { yMax: 100, ticks: [0, 50, 100], height: 150, label: "Score during this period" });
+  document.getElementById("drawer").classList.add("open");
+  document.getElementById("drawer-bg").classList.add("open");
+  document.getElementById("dr-close").focus();
+}
+function closeDrawer() {
+  document.getElementById("drawer").classList.remove("open");
+  document.getElementById("drawer-bg").classList.remove("open");
+  lastFocus?.focus();
+}
+document.getElementById("dr-close").addEventListener("click", closeDrawer);
+document.getElementById("drawer-bg").addEventListener("click", closeDrawer);
+document.addEventListener("keydown", e => { if (e.key === "Escape") closeDrawer(); });
+
+// ─── add first site ───────────────────────────────────────────────────────────
+async function addSite(input) {
+  const { site } = await api("sites", { method: "POST", body: { website: input.value.trim() } });
+  ({ sites } = await api("sites"));
+  store.set("hr-site", site.id);
+  detail = null;
+  input.value = "";
+  renderSiteSelect(); // selects the new site
+}
+document.getElementById("first-site-form").addEventListener("submit", async e => {
+  e.preventDefault();
+  try { await addSite(document.getElementById("first-site")); renderOverview(); } catch (err) { toast(err.message); }
+});
+
+// ─── account ──────────────────────────────────────────────────────────────────
+function renderAccount() {
+  document.getElementById("acct-email").textContent = `${me.email}${me.email_verified ? " · confirmed" : " · not confirmed yet"}`;
+  document.getElementById("p-name").value = me.name || "";
+  document.getElementById("p-company").value = me.company || "";
+  document.getElementById("p-whatsapp").value = me.whatsapp || "";
+  document.getElementById("pw-current-field").classList.toggle("hidden", !me.has_password);
+  document.getElementById("pw-title").textContent = me.has_password ? "Change password" : "Set a password";
+  renderPlan();
+  renderSites();
+}
+
+async function renderPlan() {
+  config ??= await api("config").catch(() => ({ payment_links: {}, plans: {} }));
+  // Cashfree checkout when it's configured; otherwise a payment link, otherwise email us.
+  const link = plan => {
+    if (config.cashfree) return "#";
+    const url = config.payment_links?.[plan];
+    return url ? `${esc(url)}${url.includes("?") ? "&" : "?"}prefilled_email=${encodeURIComponent(me.email)}`
+      : `mailto:hello@dexosoftsolutions.com?subject=${encodeURIComponent(`Upgrade ${me.email} to ${plan}`)}`;
+  };
+  const price = plan => HR.money(config.plans?.[plan]?.price ?? 0, config.currency || "INR");
+  const p = me.plan_active;
+  document.getElementById("plan-card").innerHTML = `
+    <div class="card-head"><div><h2>Plan</h2><p>${p === "free" ? "Free forever. Upgrade any time." : p === "lifetime" ? "Paid once. Reports for life." : `Active until ${date(me.plan_expires_at)}`}</p></div><span class="badge ${p === "free" ? "" : "good"}">${esc(me.plan_label)}</span></div>
+    <ul class="check-list" style="grid-template-columns:1fr;margin-bottom:16px">
+      <li>${me.limits.sites} website${me.limits.sites > 1 ? "s" : ""}</li>
+      <li>${me.limits.rescansPerDay} rescans a day</li>
+      ${me.limits.weekly ? "<li>Weekly report by email every Monday</li><li>Monthly, quarterly, half-yearly and yearly summaries</li>" : ""}
+    </ul>
+    ${p !== "lifetime" ? `<div class="row">
+      <a class="btn primary sm" data-buy="180day" href="${link("180day")}">${p === "180day" ? "Add 180 days" : "180-Day Pass"} · ${price("180day")}</a>
+    </div>
+    <p class="hint" style="margin-top:8px">${config.cashfree
+      ? "One-time payment through Cashfree: UPI, cards, net banking or wallets. Your plan switches on as soon as it goes through."
+      : config.payment_links?.["180day"]
+        ? `Pay with ${esc(me.email)} and your plan switches on automatically${me.email_verified ? "" : " once your email is confirmed"}.`
+        : "Online payment is being set up. Tap the plan to email us and we'll send you a secure payment link."}</p>` : ""}`;
+}
+document.getElementById("plan-card").addEventListener("click", async e => {
+  const b = e.target.closest("[data-buy]");
+  if (!b || !config?.cashfree) return;
+  e.preventDefault();
+  b.classList.add("disabled"); b.textContent = "Opening payment…";
+  try { await HR.checkout(b.dataset.buy); }
+  catch (err) { toast(err.message); renderPlan(); }
+});
+
+function renderSites() {
+  document.getElementById("sites-limit").textContent = `${sites.length} of ${me.limits.sites} on your plan`;
+  document.getElementById("add-site-form").classList.toggle("hidden", sites.length >= me.limits.sites);
+  document.getElementById("sites-list").innerHTML = sites.map(s => `
+    <div class="fix" data-site="${esc(s.id)}">
+      <div class="row between"><b>${esc(s.hostname)}</b><span class="small muted">${s.score ?? "–"}/100 · ${s.status === "paused" ? "paused" : "active"}</span></div>
+      <div class="field" style="margin:10px 0 8px"><label>Keywords (comma separated, up to 5)</label><input data-kw value="${esc(s.keywords.join(", "))}"></div>
+      <div class="row">
+        <button class="btn sm" data-act="save">Save keywords</button>
+        <button class="btn ghost sm" data-act="${s.status === "paused" ? "resume" : "pause"}">${s.status === "paused" ? "Resume weekly scans" : "Pause weekly scans"}</button>
+        <button class="btn danger sm" data-act="remove">Remove</button>
+      </div>
+    </div>`).join("") || `<p class="muted">No sites yet.</p>`;
+}
+
+document.getElementById("sites-list").addEventListener("click", async e => {
+  const btn = e.target.closest("[data-act]");
+  if (!btn) return;
+  const box = btn.closest("[data-site]"), id = box.dataset.site, act = btn.dataset.act;
+  try {
+    if (act === "remove") {
+      if (!confirm("Remove this site and all of its scans and reports?")) return;
+      await api(`sites/${id}`, { method: "DELETE" });
+      toast("Site removed.");
+    } else if (act === "save") {
+      await api(`sites/${id}`, { method: "PATCH", body: { keywords: box.querySelector("[data-kw]").value } });
+      toast("Keywords saved.");
+    } else {
+      await api(`sites/${id}`, { method: "PATCH", body: { status: act === "pause" ? "paused" : "active" } });
+      toast(act === "pause" ? "Weekly scans paused." : "Weekly scans resumed.");
+    }
+    ({ sites } = await api("sites"));
+    detail = null;
+    renderSiteSelect();
+    renderSites();
+  } catch (err) { toast(err.message); }
+});
+
+document.getElementById("add-site-form").addEventListener("submit", async e => {
+  e.preventDefault();
+  try { await addSite(document.getElementById("add-site")); renderSites(); toast("Site added. Open Overview to run its first scan."); }
+  catch (err) { toast(err.message); }
+});
+
+const formMsg = (id, text, kind) => { document.getElementById(id).innerHTML = `<div class="alert ${kind}">${esc(text)}</div>`; };
+document.getElementById("profile-form").addEventListener("submit", async e => {
+  e.preventDefault();
+  try {
+    ({ user: me } = await api("me", { method: "PATCH", body: {
+      name: document.getElementById("p-name").value, company: document.getElementById("p-company").value,
+      whatsapp: document.getElementById("p-whatsapp").value } }));
+    document.getElementById("avatar").textContent = initials(me);
+    formMsg("profile-msg", "Saved.", "ok");
+  } catch (err) { formMsg("profile-msg", err.message, "error"); }
+});
+document.getElementById("pw-form").addEventListener("submit", async e => {
+  e.preventDefault();
+  try {
+    await api("me/password", { method: "POST", body: { current: document.getElementById("pw-current").value, password: document.getElementById("pw-new").value } });
+    me.has_password = true; e.target.reset(); renderAccount();
+    formMsg("pw-msg", "Password updated. Other devices have been logged out.", "ok");
+  } catch (err) { formMsg("pw-msg", err.message, "error"); }
+});
+document.getElementById("delete-form").addEventListener("submit", async e => {
+  e.preventDefault();
+  if (!confirm("Delete your account and all your data? This can't be undone.")) return;
+  try { await api("me", { method: "DELETE", body: { confirm: document.getElementById("delete-confirm").value } }); location.replace("/"); }
+  catch (err) { toast(err.message); }
+});
+document.querySelectorAll("#logout, [data-logout]").forEach(b => b.addEventListener("click", async () => {
+  await api("auth/logout", { method: "POST", body: {} }).catch(() => {});
+  location.replace("/");
+}));
+
+boot().catch(err => { if (err.message !== "Please log in.") toast(err.message); });
+</script>
+</body>
+</html>

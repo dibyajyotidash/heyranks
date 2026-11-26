@@ -1,98 +1,198 @@
-# HeyRanks — deploy guide
+# HeyRanks
+
+Weekly SEO + AI-visibility reports for small businesses. Users have accounts, track their sites,
+and get weekly, monthly, quarterly, half-yearly and yearly reports. Admins see revenue, customers,
+signups and visits.
+
+## Run it locally
+
+```
+npm install
+npm run seed:demo      # optional: demo login with 70 weeks of history + demo customers
+npm run dev            # http://localhost:8787  (SQLite file in .data/dev.db)
+npm test               # API, period maths and legacy-migration tests
+```
+
+Demo login: `demo@heyranks.com` / `demo-password`. To open `/admin` locally, start the server with
+`ADMIN_EMAILS=demo@heyranks.com npm run dev`. Without `RESEND_API_KEY`, no email is sent: login and
+reset links are printed in the terminal instead.
 
 ## Files
 
 | File | Purpose |
 |---|---|
-| `index.html` | Landing page — free scan calls `/api/scan` |
-| `signup.html` | Post-payment onboarding form |
-| `_worker.js` | Cloudflare Pages Worker — scan, signup, weekly cron, email |
-| `schema.sql` | D1 database schema (run once) |
-| `wrangler.toml` | Cloudflare config — D1 binding + Monday 6am cron |
-| `terms.html`, `privacy.html`, `refund.html` | Legal pages |
-| `robots.txt`, `sitemap.xml`, `llms.txt` | SEO & AI-visibility files |
+| `index.html` | Landing page: free scan, live counters, pricing |
+| `signup.html`, `login.html`, `reset.html` | Accounts: password, email login link, password reset |
+| `payment.html` | Return page after Cashfree checkout: confirms the payment and shows the plan |
+| `dashboard.html` | User dashboard: scores, period reports, fixes, account settings |
+| `admin.html` | Admin: revenue, customers, signups, visits, user management |
+| `assets/app.css`, `assets/app.js` | Shared styles, API helper and SVG charts for the app pages |
+| `lib/api.js` | Every `/api/*` route |
+| `lib/schema.js` | **Database schema + migrations** (source of truth; runs automatically) |
+| `lib/reports.js` | Weekly → yearly period roll-ups |
+| `lib/auth.js` | Password hashing, sessions, login tokens, rate limits |
+| `lib/cashfree.js` | Cashfree Orders API client and webhook signature check |
+| `lib/plans.js` | Plans, prices and granting a plan (shared by the API and the daily job) |
+| `lib/analytics.js` | Visitor analytics: records page views, builds the Admin → Visitors report |
+| `assets/track.js` | Page-view tracker included on the public pages (no cookies) |
+| `lib/core.js` | Site scanner, email templates, daily job |
+| `lib/db.js` | Turso/libSQL adapter with the D1 API (Vercel + local) |
+| `_worker.js` / `api/index.js` | Cloudflare / Vercel entry points (both call `lib/api.js`) |
+| `scripts/dev.mjs` | Local server |
+| `scripts/seed-demo.mjs` | Demo data (tagged, never counted in real stats) |
+| `scripts/make-admin.mjs` | Makes an existing account an admin directly in the database |
 
-> `_worker.js` (advanced mode) handles all requests and the scheduled cron.
-> It supersedes `functions/api/scan.js` — that file is kept for reference only.
-
----
-
-## Deploy (Cloudflare Pages + D1)
-
-### 1 — Create the D1 database
-
-```
-wrangler d1 create heyranks-prod
-```
-
-Copy the `database_id` from the output and paste it into `wrangler.toml`.
-
-### 2 — Run the schema
+## Data model
 
 ```
-wrangler d1 execute heyranks-prod --file=schema.sql
+users 1─* sites 1─* scans          every scan result (signup, weekly, manual)
+               1─* reports        roll-ups per weekly | monthly | quarterly | half_yearly | yearly period
+users 1─* sessions, auth_tokens   logins (only SHA-256 hashes of tokens are stored)
+users 1─* payments                verified payments → revenue stats
+rate_limits, page_views, meta     abuse limits, anonymous daily visit counts, schema version
 ```
 
-### 3 — Set secrets
+Every scan updates the five reports whose period contains it, so the current week, month,
+quarter, half-year and year are always live in the database. A period's report stops changing
+when the period ends. Each report stores start/end/average/min/max score, mobile speed, and the issues
+fixed, new and still open, compared with the last scan before the period began. Periods are calendar
+periods in UTC (weeks run Monday to Sunday).
+
+The schema migrates itself on the first API request. The old `customers`/`reports` tables are renamed
+to `legacy_customers`/`legacy_reports`, and their data is copied into users, sites, scans and reports
+(`test/migration.test.js`).
+
+## Plans
+
+| Plan | Sites | Weekly email | Period summaries by email | Rescans/day |
+|---|---|---|---|---|
+| Free | 1 | – | – | 3 |
+| 180-Day Pass (₹849) | 1 | ✓ | ✓ | 10 |
+| Lifetime (₹4,149) | 3 | ✓ | ✓ | 10 |
+
+Prices live in `PLANS` in `lib/plans.js` (in paise). The landing page copy repeats them, so change both.
+New accounts start on Free. A paid plan is switched on by a **Cashfree payment**, by a verified
+webhook from another provider, or by an admin (Admin → Users → Manage).
+
+- **Lifetime is capped at 500 sales** (`LIFETIME_CAP` in `lib/plans.js`). Checkout refuses Lifetime once
+  500 are paid or in checkout, and the pricing card shows how many places are left.
+- **A full refund removes access automatically.** A refunded 180-Day Pass loses its 180 days, and a refunded
+  Lifetime plan returns to Free. Partial refunds don't change access.
+- **The score never depends on PageSpeed.** It uses the 10 fixed checks, whose weights add up to 100.
+  Mobile speed is shown next to it when Google answers.
+
+## Environment variables
+
+| Name | Required | Purpose |
+|---|---|---|
+| `TURSO_DATABASE_URL`, `TURSO_AUTH_TOKEN` | Vercel | Database (added by the Turso integration) |
+| `RESEND_API_KEY` | yes | Email (reports, login links, resets) |
+| `ADMIN_EMAILS` | yes | Comma-separated. These users become admins once they confirm their email |
+| `SITE_URL` | yes | `https://heyranks.com`. Used for links in emails and payment return URLs. Without it, links use `https://heyranks.com` (never the request's Host header) |
+| `FREE_SCANS_PER_HOUR` | optional | Site-wide cap on free homepage scans (default 300), on top of 10 per visitor per hour |
+| `CRON_SECRET` | Vercel | Protects `/api/cron` (Vercel sends it automatically) |
+| `ADMIN_SECRET` | optional | Manual job run: `POST /api/weekly` with header `X-Admin-Secret` |
+| `CASHFREE_APP_ID`, `CASHFREE_SECRET_KEY` | yes (payments) | Cashfree API keys (merchant.cashfree.com → Developers → API keys) |
+| `CASHFREE_ENV` | yes (payments) | `sandbox` for test keys, `production` for live keys |
+| `CASHFREE_WEBHOOK_SECRET` | optional | Webhook signing secret, if different from the secret key |
+| `PAYMENT_LINK_180DAY`, `PAYMENT_LINK_LIFETIME` | optional | Fallback payment links, used only when Cashfree isn't configured |
+| `STRIPE_SECRET` / `RAZORPAY_SECRET` / `LEMONSQUEEZY_SECRET` | optional | Signing secrets for other providers' webhooks. Unsigned webhooks are rejected |
+| `CURRENCY` | optional | Main currency in the admin revenue view (default `INR`) |
+| `ANALYTICS_SALT` | optional | Any random string, mixed into the daily anonymous visitor ID |
+| `PSI_KEY` | recommended | Google PageSpeed Insights API key. Without it Google's shared quota usually refuses, so scans have no speed score (`speed: null`) |
+
+## Deploy on Vercel (+ Turso)
+
+1. vercel.com → **Add New → Project** → import the repo. Framework preset: **Other** (vercel.json sets the rest).
+2. Project → **Storage → Create Database → Turso Cloud** → connect. Tables are created on the first request.
+3. Add the environment variables above, then **Redeploy**.
+4. **Settings → Domains** → add `heyranks.com` and `www.heyranks.com`.
+5. Log in once with **“Email me a login link”** using an `ADMIN_EMAILS` address to unlock `/admin`.
+
+`vercel.json` runs `/api/cron` daily at 06:00 UTC. On the first run each week it sends the weekly
+reports. The other days it retries failures and emails monthly, quarterly, half-yearly and yearly
+summaries once those periods end. It also settles unpaid Cashfree orders and cleans up expired sessions and tokens.
+
+After deploying, check that query strings reach the API through the `/api/:route*` rewrite (for example,
+`/dashboard` → Monthly tab shows monthly rows).
+
+## Admin access
+
+Admins see the business overview, the Visitors tab and user management at `/admin`. There are two ways in.
+
+1. **With email working** (`RESEND_API_KEY` set): add the address to `ADMIN_EMAILS` in Vercel (for example
+   `ADMIN_EMAILS=you@example.com`) and redeploy. Sign up with that address, then log in once with
+   **“Email me a login link”**. The login link proves you own the address, which unlocks admin.
+2. **Without email:** sign up at `/signup`, then copy `TURSO_DATABASE_URL` and `TURSO_AUTH_TOKEN` from Vercel
+   into `.env.local` (it's git-ignored). Run `node --env-file=.env.local scripts/make-admin.mjs you@example.com`.
+
+After that, an admin can promote others from Admin → Users → Manage.
+
+## Visitor analytics (Admin → Visitors)
+
+Modelled on the market_forecast_web analytics page. It shows:
+- unique visitors, page views, pages per visit and sign-up rate;
+- daily traffic and a visitor → sign-up → checkout → paid funnel;
+- top pages, referrers and UTM campaigns;
+- devices, browsers and operating systems;
+- countries, cities and traffic by hour (IST);
+- recent sessions, with CSV export.
+
+Unlike market_forecast_web, it's private by design:
+- **No IP address is stored.** Unique visitors use a hash of IP + browser that changes every day.
+- **No third-party lookup.** Location comes from Vercel/Cloudflare geo headers, not an IP lookup service.
+- **Minimal referrers.** Only the referring host name is kept, not the full URL.
+- **No cookies.**
+- **Limited retention.** Rows are deleted after about 13 months.
+
+Bots, headless browsers and admins aren't counted. The public pages load `assets/track.js`; the
+dashboard and admin pages aren't tracked.
+
+## Deploy on Cloudflare Pages (+ D1)
 
 ```
-wrangler pages secret put RESEND_API_KEY     # get from resend.com (free tier: 100 emails/day)
-wrangler pages secret put ADMIN_SECRET       # any random string — protects the manual trigger
-wrangler pages secret put PSI_KEY            # optional: Google PageSpeed Insights API key
-```
-
-### 4 — Deploy
-
-```
-npm i -g wrangler
-wrangler login
 wrangler pages deploy . --project-name heyranks
+wrangler pages secret put RESEND_API_KEY      # and the other variables above
 ```
 
-### 5 — Custom domain
+The D1 binding is in `wrangler.toml`. Tables are created on the first request (no `d1 execute` step).
+`_worker.js` serves only public files, so `lib/`, `scripts/` and other source files aren't downloadable.
+For scheduled jobs, use a daily trigger (`0 6 * * *`) that calls `/api/weekly` with `X-Admin-Secret`.
 
-Cloudflare → Workers & Pages → heyranks → Custom domains → add `heyranks.com`.
+## Payments (Cashfree)
 
----
+Same approach as the market_forecast_web integration: Orders API `2023-08-01` and the JS SDK v3.
 
-## Weekly reports
+1. A logged-in user clicks a plan. `POST /api/checkout` saves a `pending` payment and creates a
+   Cashfree order (₹849 or ₹4,149). Clicking again within 30 minutes reuses the same order.
+2. The browser opens Cashfree's checkout (UPI, cards, net banking, wallets).
+3. Cashfree sends the user to `/payment?order_id=…` and calls `/api/webhook/cashfree`.
+4. Both of these ask Cashfree's API for the order. The plan is granted only when the order is `PAID`
+   for the right amount, and only once, however many times webhooks or page loads arrive.
+5. A full-refund webhook marks the payment `refunded`, removes it from revenue and takes back the
+   plan it paid for. Partial refunds change nothing.
+6. Safety net: the daily cron re-checks Cashfree orders from the last 7 days that are still pending
+   (the buyer paid but closed the tab, and the webhook never arrived). Whichever path switches a plan
+   on also emails the buyer a receipt.
 
-The cron fires every **Monday at 6:00 AM UTC**.  
+Setup in the Cashfree dashboard: add the webhook URL `https://heyranks.com/api/webhook/cashfree`
+(payment success, failed and refund events), whitelist `heyranks.com`, then set the `CASHFREE_*`
+variables. Test with sandbox keys and `CASHFREE_ENV=sandbox` first. Locally, Cashfree can't reach
+your webhook, so the `/payment` page settles the order instead.
 
-**Set up the cron trigger in the Cloudflare dashboard** (Pages does not support `[triggers]` in wrangler.toml):
-1. Workers & Pages → `heyranks` → **Settings** → **Triggers**
-2. Add Cron Trigger: `0 6 * * 1`
-
-To trigger a test run manually:
-
-```
-curl -X POST https://heyranks.com/api/weekly \
-  -H "X-Admin-Secret: YOUR_ADMIN_SECRET"
-```
-
----
-
-## Payment integration
-
-The "Start for $10" and "Claim lifetime deal" buttons go to `/signup?plan=180day` and `/signup?plan=lifetime`.
-
-**Option A — no webhook (simplest for launch):**  
-Customers pay via your Razorpay/Stripe/Lemon Squeezy payment link, then land on `/signup` to enter their details. Manual verification is not needed — you trust that they paid.
-
-**Option B — Stripe webhook:**  
-In your Stripe dashboard, add a webhook pointing to `https://heyranks.com/api/webhook`.  
-Put the signing secret in `STRIPE_SECRET`. Pass `{"plan":"180day","website":"..."}` as metadata on the checkout session.
-
-**Option C — Lemon Squeezy webhook:**  
-In Lemon Squeezy, add a webhook to `https://heyranks.com/api/webhook`.  
-Pass `{"plan":"180day","website":"..."}` as custom data on the product.
-
----
+**Other providers:** `/api/webhook` still accepts signed Stripe (`checkout.session.completed`),
+Razorpay (`payment.captured`) and Lemon Squeezy (`order_created`) events, with `plan` in the
+metadata. These are matched by email and applied once the user has confirmed that email.
+If you take a payment some other way, record it in Admin → Users → Manage so revenue stays accurate.
 
 ## Still to do before launch
 
-1. **Payment links** — replace `href="/signup?plan=180day"` on paid plan buttons with your actual Razorpay/Stripe payment link (redirect to `/signup?plan=180day&email={email}` after payment).
-2. **WhatsApp number** — replace `+91 00000 00000` in `index.html`.
-3. **Email domain** — verify `heyranks.com` in Resend and configure DKIM.
-4. **Google Search Console** — verify domain and submit `sitemap.xml`.
-5. **Legal review** — have `terms.html`, `privacy.html`, `refund.html` checked before taking payments.
+1. Set `SITE_URL=https://heyranks.com` and `RESEND_API_KEY`, and verify `heyranks.com` in Resend (DKIM).
+   Until Resend is set, no report is marked as sent; they all go out once it is.
+2. Set the `CASHFREE_*` variables, add the Cashfree webhook, and do one sandbox purchase end to end:
+   pay, duplicate webhook, full refund (the plan should end) and partial refund (the plan should stay).
+3. Set `PSI_KEY` so the mobile speed shows on every scan.
+4. Have a lawyer review `terms.html`, `privacy.html` and `refund.html` for India.
+5. Before adding features to the landing page, ship and test them. The page now describes only what
+   the scanner does; "Not included yet" lists AI-answer checks, rankings, competitors and Google Business
+   Profile.

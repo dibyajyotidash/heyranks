@@ -1,0 +1,21 @@
+{
+  "name": "heyranks",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node scripts/dev.mjs",
+    "build": "node scripts/build-static.mjs",
+    "db:init": "node scripts/init-db.mjs",
+    "seed:demo": "node scripts/seed-demo.mjs",
+    "make-admin": "node scripts/make-admin.mjs",
+    "pretest": "node -e \"try{for(const d of require('fs').readdirSync('.data'))if(d.startsWith('test-'))require('fs').rmSync('.data/'+d,{recursive:true,force:true})}catch{}\"",
+    "test": "node --test \"test/*.test.js\""
+  },
+  "dependencies": {
+    "@libsql/client": "^0.15.0",
+    "@vercel/functions": "^2.0.0"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

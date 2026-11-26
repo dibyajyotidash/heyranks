@@ -1,0 +1,382 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Admin — HeyRanks</title>
+<meta name="robots" content="noindex">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='24' height='24' rx='6' fill='%230f1720'/%3E%3Cpath d='M4 18 L9 12 L13 15 L20 6' stroke='%23d9f99d' stroke-width='2.6' fill='none' stroke-linecap='round'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/assets/app.css">
+<script src="/assets/app.js"></script>
+<style>
+  .filters { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin-bottom: 16px; }
+  .filters label.check { display: inline-flex; gap: 8px; align-items: center; font-size: .88rem; color: var(--ink-2); cursor: pointer; }
+  .loading { opacity: .5; transition: opacity .2s; }
+  .manage { background: var(--surface-2); }
+  .manage td { white-space: normal; }
+  .manage .row > * { flex: none; }
+  .manage select, .manage input { padding: 7px 10px; border: 1.5px solid var(--line); border-radius: 8px; background: var(--surface); }
+  .user-cell b { display: block; font-weight: 600; }
+  .user-cell span { color: var(--muted); font-size: .8rem; }
+  /* ranked lists: label, number, and a thin bar showing its share of the top item */
+  .rank { padding: 6px 0; }
+  .rank-row { display: flex; justify-content: space-between; gap: 12px; font-size: .88rem; }
+  .rank-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+  .rank-row .num { color: var(--ink); font-weight: 600; flex: none; }
+  .rank-row .num small { color: var(--muted); font-weight: 400; margin-left: 6px; }
+  .rank-bar { height: 6px; background: var(--line-2); border-radius: 99px; margin-top: 5px; overflow: hidden; }
+  .rank-bar div { height: 100%; background: var(--series); border-radius: 99px; }
+  .pages-cell { max-width: 340px; overflow: hidden; text-overflow: ellipsis; }
+  .vgrid { margin-top: 16px; align-items: start; }
+</style>
+</head>
+<body>
+<header class="topbar">
+  <div class="in">
+    <a href="/" class="logo"><span class="logo-mark"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M4 18 L9 12 L13 15 L20 6" stroke="#d9f99d" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg></span>HeyRanks <span class="badge" style="background:var(--mint);color:#0f1720">Admin</span></a>
+    <span class="spacer"></span>
+    <a href="/dashboard" class="link">My dashboard</a>
+    <button class="link hide-sm" id="logout">Log out</button>
+  </div>
+</header>
+
+<main class="page">
+  <div id="denied" class="card empty-state hidden"><h2>Admins only</h2><p>Your account doesn't have admin access. Admins are set with ADMIN_EMAILS (after confirming the email) or by another admin.</p><a class="btn" href="/dashboard">Go to my dashboard</a></div>
+
+  <div id="app" class="hidden">
+    <div class="page-head">
+      <div><h1 id="view-title">Business overview</h1><p class="muted small" id="as-of">Live from the database</p></div>
+      <div class="tabs" role="tablist" id="views" aria-label="Admin views">
+        <button role="tab" data-view="business">Business</button>
+        <button role="tab" data-view="visitors">Visitors</button>
+      </div>
+    </div>
+
+    <div class="filters">
+      <div class="tabs" role="tablist" id="range" aria-label="Date range">
+        <button role="tab" data-days="7">7 days</button>
+        <button role="tab" data-days="30">30 days</button>
+        <button role="tab" data-days="90">90 days</button>
+        <button role="tab" data-days="365">12 months</button>
+      </div>
+      <label class="check" id="demo-wrap"><input type="checkbox" id="demo"> Include demo data</label>
+    </div>
+
+    <!-- ─── Visitors ─── -->
+    <section id="view-visitors" class="hidden">
+      <div class="grid cols-4" id="v-kpis"></div>
+      <div class="grid cols-2 vgrid">
+        <div class="card"><div class="card-head"><div><h2>Daily traffic</h2><p>Unique visitors per day</p></div></div><div class="chart" id="v-daily"></div></div>
+        <div class="card"><div class="card-head"><div><h2>Sign-up funnel</h2><p id="v-funnel-sub">From first visit to paying customer</p></div></div><div id="v-funnel"></div></div>
+      </div>
+      <div class="grid cols-3 vgrid">
+        <div class="card"><div class="card-head"><div><h2>Top pages</h2><p>By page views</p></div></div><div id="v-pages"></div></div>
+        <div class="card"><div class="card-head"><div><h2>Where they come from</h2><p>Referring websites</p></div></div><div id="v-referrers"></div></div>
+        <div class="card"><div class="card-head"><div><h2>Campaigns</h2><p>UTM source / medium</p></div></div><div id="v-utm"></div></div>
+      </div>
+      <div class="grid cols-3 vgrid">
+        <div class="card"><div class="card-head"><h2>Devices</h2></div><div id="v-devices"></div></div>
+        <div class="card"><div class="card-head"><h2>Browsers</h2></div><div id="v-browsers"></div></div>
+        <div class="card"><div class="card-head"><h2>Operating systems</h2></div><div id="v-os"></div></div>
+      </div>
+      <div class="grid cols-2 vgrid">
+        <div class="card"><div class="card-head"><h2>Countries</h2></div><div id="v-countries"></div></div>
+        <div class="card"><div class="card-head"><h2>Cities</h2></div><div id="v-cities"></div></div>
+      </div>
+      <div class="card" style="margin-top:16px"><div class="card-head"><div><h2>Traffic by hour</h2><p>Page views by hour of day, India time (IST)</p></div></div><div class="chart" id="v-hours"></div></div>
+      <div class="card" style="margin-top:16px">
+        <div class="card-head"><div><h2>Recent sessions</h2><p>The last 30 visits and the pages each one saw</p></div><button class="btn ghost sm" id="v-export">Export CSV</button></div>
+        <div class="table-wrap"><table>
+          <thead><tr><th>When</th><th>Pages</th><th class="num">Views</th><th>From</th><th>Location</th><th>Device</th><th>Account</th></tr></thead>
+          <tbody id="v-sessions"></tbody>
+        </table></div>
+      </div>
+      <p class="hint" style="margin-top:12px">No IP addresses are stored. Unique visitors are counted with a daily-changing anonymous ID, and location comes from the hosting platform. Visits by admins and bots aren't counted.</p>
+    </section>
+
+    <section id="view-business">
+    <div id="content">
+      <div class="grid cols-4" id="kpis"></div>
+
+      <div class="grid cols-3" style="margin-top:16px">
+        <div class="card"><div class="card-head"><div><h2>Visitors</h2><p>Unique visitors per day</p></div></div><div class="chart" id="c-visitors"></div></div>
+        <div class="card"><div class="card-head"><div><h2>Signups</h2><p>New accounts per day</p></div></div><div class="chart" id="c-signups"></div></div>
+        <div class="card"><div class="card-head"><div><h2>Revenue</h2><p id="rev-sub">Payments per day</p></div></div><div class="chart" id="c-revenue"></div></div>
+      </div>
+
+      <div class="grid cols-2" style="margin-top:16px;align-items:start">
+        <div class="card"><div class="card-head"><h2>Top pages</h2></div>
+          <div class="table-wrap"><table><thead><tr><th>Page</th><th class="num">Visitors</th><th class="num">Views</th></tr></thead><tbody id="pages"></tbody></table></div>
+        </div>
+        <div class="card"><div class="card-head"><div><h2>Customers by plan</h2><p>Plans active right now</p></div></div>
+          <div class="table-wrap"><table><thead><tr><th>Plan</th><th class="num">Users</th><th class="num">Share</th></tr></thead><tbody id="plans"></tbody></table></div>
+          <div id="revenue-list" style="margin-top:14px"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card" style="margin-top:16px">
+      <div class="card-head">
+        <div><h2>Users</h2><p id="user-count"></p></div>
+        <input class="input" id="search" aria-label="Search users" placeholder="Search name, email or business" style="max-width:300px">
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>User</th><th>Plan</th><th>Ends</th><th class="num">Sites</th><th class="num">Score</th><th class="num">Paid</th><th>Joined</th><th>Last login</th><th></th></tr></thead>
+          <tbody id="users"></tbody>
+        </table>
+      </div>
+      <button class="btn ghost sm hidden" id="more" style="margin-top:12px">Load more</button>
+    </div>
+    </section>
+  </div>
+</main>
+
+<script>
+const { api, esc, fmt, compact, money, date, ago, toast, barChart } = HR;
+const store = { get(k) { try { return localStorage.getItem(k); } catch { return null; } }, set(k, v) { try { localStorage.setItem(k, v); } catch {} } };
+const PLAN_LABEL = { free: "Free", "180day": "180-Day Pass", lifetime: "Lifetime" };
+let days = Number(store.get("hr-admin-days")) || 30, demo = store.get("hr-admin-demo") === "1";
+let users = [], total = 0, query = "", openRow = null;
+
+const pct = (a, b) => (b ? `${((a / b) * 100).toFixed(1)}%` : "–");
+const shortDay = d => date(d, { day: "numeric", month: "short" });
+
+async function loadOverview() {
+  document.querySelectorAll("#range button").forEach(b => b.setAttribute("aria-selected", Number(b.dataset.days) === days));
+  document.getElementById("demo").checked = demo;
+  const content = document.getElementById("content");
+  content.classList.add("loading");
+  const o = await api(`admin/overview?days=${days}&demo=${demo ? 1 : 0}`);
+  content.classList.remove("loading");
+  const k = o.kpis, cur = o.currency;
+  const rev = o.revenue.find(r => r.currency === cur) || { total: 0, recent: 0, n: 0 };
+  const signups = o.series.reduce((a, d) => a + d.signups, 0);
+  const label = days === 365 ? "12 months" : `${days} days`;
+  document.getElementById("as-of").textContent = `Live from the database · updated ${new Date().toLocaleTimeString()}${demo ? " · including demo data" : ""}`;
+
+  document.getElementById("kpis").innerHTML = `
+    <div class="card tile hero"><div class="label">Revenue · last ${label}</div><div class="value">${money(rev.recent, cur)}</div><div class="delta">${money(rev.total, cur)} all time · ${fmt(rev.n)} payments</div></div>
+    <div class="card tile"><div class="label">Paying customers</div><div class="value">${fmt(k.paid_active)}</div><div class="delta">${pct(k.paid_active, k.users)} of ${fmt(k.users)} users</div></div>
+    <div class="card tile"><div class="label">New users · last ${label}</div><div class="value">${fmt(k.users_recent)}</div><div class="delta">${pct(signups, k.visitors)} of visitors signed up</div></div>
+    <div class="card tile"><div class="label">Site visitors · last ${label}</div><div class="value">${compact(k.visitors)}</div><div class="delta">${compact(k.visits)} page views · ${fmt(k.scans)} scans · ${fmt(k.reports_sent)} reports emailed</div></div>`;
+
+  const pts = key => o.series.map(d => ({ x: shortDay(d.day), tip: date(d.day), y: d[key] }));
+  barChart(document.getElementById("c-visitors"), pts("visitors"), { label: "Unique visitors per day", empty: "No visits recorded yet" });
+  barChart(document.getElementById("c-signups"), pts("signups"), { label: "Signups per day", empty: "No signups in this range" });
+  document.getElementById("rev-sub").textContent = `Payments per day (${cur})`;
+  barChart(document.getElementById("c-revenue"), pts("revenue"), { label: `Revenue per day in ${cur}`, format: v => money(v, cur), empty: "No payments in this range" });
+
+  document.getElementById("pages").innerHTML = o.pages.map(p => `<tr><td>${esc(p.path)}</td><td class="num">${fmt(p.visitors)}</td><td class="num">${fmt(p.views)}</td></tr>`).join("")
+    || `<tr><td colspan="3" class="muted">No visits yet. Visits are counted on the public pages.</td></tr>`;
+  const planTotal = o.plan_mix.reduce((a, p) => a + p.n, 0);
+  document.getElementById("plans").innerHTML = ["lifetime", "180day", "free"].map(p => {
+    const n = o.plan_mix.find(x => x.plan === p)?.n || 0;
+    return `<tr><td>${PLAN_LABEL[p]}</td><td class="num">${fmt(n)}</td><td class="num">${pct(n, planTotal)}</td></tr>`;
+  }).join("");
+  const other = o.revenue.filter(r => r.currency !== cur);
+  document.getElementById("revenue-list").innerHTML = other.length
+    ? `<p class="small muted">Other currencies (all time): ${other.map(r => `${money(r.total, r.currency)} (${r.n})`).join(" · ")}</p>` : "";
+}
+
+async function loadUsers(append = false) {
+  const offset = append ? users.length : 0;
+  const r = await api(`admin/users?q=${encodeURIComponent(query)}&offset=${offset}&limit=25&demo=${demo ? 1 : 0}`);
+  users = append ? users.concat(r.users) : r.users;
+  total = r.total;
+  renderUsers();
+}
+
+function planBadge(u) {
+  const cls = u.plan_active === "free" ? "" : "good";
+  const expired = u.plan === "180day" && u.plan_active === "free";
+  return `<span class="badge ${cls}">${PLAN_LABEL[u.plan_active]}</span>${expired ? ` <span class="badge warn">expired</span>` : ""}`;
+}
+
+function renderUsers() {
+  document.getElementById("user-count").textContent = `${fmt(total)} user${total === 1 ? "" : "s"}${query ? ` matching “${query}”` : ""}`;
+  document.getElementById("users").innerHTML = users.map(u => `
+    <tr>
+      <td class="user-cell"><b>${esc(u.name || "—")}${u.role === "admin" ? ` <span class="badge">admin</span>` : ""}${u.status === "disabled" ? ` <span class="badge bad">disabled</span>` : ""}</b><span>${esc(u.email)}${u.email_verified ? "" : " · unconfirmed"}</span></td>
+      <td>${planBadge(u)}</td>
+      <td>${u.plan === "180day" ? date(u.plan_expires_at) : u.plan === "lifetime" ? "never" : "—"}</td>
+      <td class="num">${u.sites}</td>
+      <td class="num">${u.last_score ?? "—"}</td>
+      <td class="num">${u.paid_total ? money(u.paid_total) : "—"}</td>
+      <td>${date(u.created_at)}</td>
+      <td>${ago(u.last_login_at)}</td>
+      <td><button class="btn ghost sm" data-manage="${esc(u.id)}">Manage</button></td>
+    </tr>
+    ${openRow === u.id ? manageRow(u) : ""}`).join("") || `<tr><td colspan="9" class="muted">No users found.</td></tr>`;
+  document.getElementById("more").classList.toggle("hidden", users.length >= total);
+}
+
+function manageRow(u) {
+  return `<tr class="manage"><td colspan="9">
+    <form class="row" data-form="${esc(u.id)}" style="gap:14px;align-items:flex-end">
+      <div><div class="small muted">Plan</div>
+        <select name="plan"><option value="">Keep ${PLAN_LABEL[u.plan_active]}</option><option value="180day">Grant / extend 180 days</option><option value="lifetime">Lifetime</option><option value="free">Downgrade to Free</option></select></div>
+      <div><div class="small muted">Payment received (optional)</div>
+        <div class="row" style="gap:6px"><input name="amount" type="number" min="0" step="0.01" placeholder="849" style="width:100px"><input name="currency" value="INR" maxlength="3" style="width:64px"></div></div>
+      <div><div class="small muted">Account</div>
+        <select name="status"><option value="">${u.status === "active" ? "Active" : "Disabled"}</option>${u.status === "active" ? `<option value="disabled">Disable (logs out)</option>` : `<option value="active">Re-enable</option>`}</select></div>
+      <div><div class="small muted">Role</div>
+        <select name="role"><option value="">${u.role}</option>${u.role !== "admin" ? `<option value="admin">Make admin</option>` : `<option value="user">Remove admin</option>`}</select></div>
+      <button class="btn primary sm">Save</button>
+      <button type="button" class="btn ghost sm" data-cancel>Cancel</button>
+    </form>
+  </td></tr>`;
+}
+
+document.getElementById("users").addEventListener("click", e => {
+  const m = e.target.closest("[data-manage]");
+  if (m) { openRow = openRow === m.dataset.manage ? null : m.dataset.manage; renderUsers(); }
+  if (e.target.closest("[data-cancel]")) { openRow = null; renderUsers(); }
+});
+document.getElementById("users").addEventListener("submit", async e => {
+  e.preventDefault();
+  const f = new FormData(e.target), id = e.target.dataset.form, body = {};
+  if (f.get("plan")) body.plan = f.get("plan");
+  if (f.get("status")) body.status = f.get("status");
+  if (f.get("role")) body.role = f.get("role");
+  if (Number(f.get("amount")) > 0) {
+    if (!body.plan) return toast("Pick the plan this payment is for.");
+    body.payment = { amount: Number(f.get("amount")), currency: f.get("currency") };
+  }
+  if (!Object.keys(body).length) return toast("Nothing to change.");
+  try {
+    await api(`admin/users/${id}`, { method: "PATCH", body });
+    toast("Saved.");
+    openRow = null;
+    await Promise.all([loadUsers(), loadOverview()]);
+  } catch (err) { toast(err.message); }
+});
+
+let searchTimer;
+document.getElementById("search").addEventListener("input", e => {
+  clearTimeout(searchTimer);
+  searchTimer = setTimeout(() => { query = e.target.value.trim(); loadUsers(); }, 250);
+});
+document.getElementById("more").addEventListener("click", () => loadUsers(true));
+document.querySelectorAll("#range button").forEach(b => b.addEventListener("click", () => {
+  days = Number(b.dataset.days); store.set("hr-admin-days", days); loadView().catch(err => toast(err.message));
+}));
+
+// ─── Visitors view ────────────────────────────────────────────────────────────
+let view = location.hash === "#visitors" ? "visitors" : "business";
+let lastVisitors = null;
+const countryName = (() => {
+  let names;
+  try { names = new Intl.DisplayNames(["en"], { type: "region" }); } catch { names = null; }
+  return code => { try { return (names && code && names.of(code)) || code; } catch { return code; } };
+})();
+
+/** Ranked list: label, unique visitors (page views in the tooltip), and a bar relative to the top row. */
+function rankList(id, rows, labelOf = r => r.label, empty = "Nothing yet in this range") {
+  const el = document.getElementById(id);
+  if (!rows?.length) { el.innerHTML = `<p class="muted small">${empty}</p>`; return; }
+  const max = Math.max(...rows.map(r => r.visitors), 1);
+  el.innerHTML = rows.map(r => `<div class="rank" title="${fmt(r.visits)} page views">
+    <div class="rank-row"><span class="rank-label">${esc(labelOf(r))}</span><span class="num">${fmt(r.visitors)}</span></div>
+    <div class="rank-bar"><div style="width:${Math.max(2, (r.visitors / max) * 100).toFixed(1)}%"></div></div></div>`).join("");
+}
+
+async function loadVisitors() {
+  document.querySelectorAll("#range button").forEach(b => b.setAttribute("aria-selected", Number(b.dataset.days) === days));
+  const box = document.getElementById("view-visitors");
+  box.classList.add("loading");
+  const a = await api(`admin/analytics?days=${days}`);
+  box.classList.remove("loading");
+  lastVisitors = a;
+  const t = a.totals, c = a.compare, f = a.funnel;
+  const label = days === 365 ? "12 months" : `${days} days`;
+  const change = (now, before) => before ? `${now >= before ? "▲" : "▼"} ${Math.abs(Math.round((now - before) / before * 100))}% vs yesterday` : "";
+  document.getElementById("as-of").textContent = `Live from the database · updated ${new Date().toLocaleTimeString()}`;
+
+  document.getElementById("v-kpis").innerHTML = `
+    <div class="card tile hero"><div class="label">Unique visitors · last ${label}</div><div class="value">${compact(t.visitors)}</div>
+      <div class="delta">Today ${fmt(c.today_visitors)} <span class="${c.today_visitors >= c.yesterday_visitors ? "up" : "down"}">${change(c.today_visitors, c.yesterday_visitors)}</span></div></div>
+    <div class="card tile"><div class="label">Page views</div><div class="value">${compact(t.visits)}</div><div class="delta">Today ${fmt(c.today_visits)} · yesterday ${fmt(c.yesterday_visits)}</div></div>
+    <div class="card tile"><div class="label">Pages per visit</div><div class="value">${t.pages_per_session || "–"}</div><div class="delta">${fmt(t.sessions)} visits (browser sessions)</div></div>
+    <div class="card tile"><div class="label">Sign-up rate</div><div class="value">${pct(f.signups, f.visitors)}</div><div class="delta">${fmt(f.signups)} sign-ups from ${fmt(f.visitors)} visitors</div></div>`;
+
+  barChart(document.getElementById("v-daily"), a.daily.map(d => ({ x: shortDay(d.day), tip: `${date(d.day)} · ${fmt(d.visits)} page views`, y: d.visitors })),
+    { label: "Unique visitors per day", empty: "No visits recorded in this range" });
+
+  const steps = [["Visitors", f.visitors], ["Signed up", f.signups], ["Started checkout", f.checkouts], ["Paid", f.paid]];
+  document.getElementById("v-funnel").innerHTML = steps.map(([name, n], i) => `<div class="rank">
+    <div class="rank-row"><span class="rank-label">${name}</span><span class="num">${fmt(n)}${i ? ` <small>(${pct(n, steps[i - 1][1])} of previous step)</small>` : ""}</span></div>
+    <div class="rank-bar"><div style="width:${f.visitors ? Math.max(n ? 2 : 0, (n / f.visitors) * 100).toFixed(1) : 0}%"></div></div></div>`).join("");
+
+  rankList("v-pages", a.pages);
+  rankList("v-referrers", a.referrers, r => r.label || "Direct / unknown");
+  rankList("v-utm", a.utm, r => r.label, "No tagged campaign links yet. Add ?utm_source=… to links you share.");
+  rankList("v-devices", a.devices);
+  rankList("v-browsers", a.browsers);
+  rankList("v-os", a.os);
+  rankList("v-countries", a.countries, r => countryName(r.label), "Location appears once the site runs on Vercel or Cloudflare.");
+  rankList("v-cities", a.cities, r => { const [city, cc] = r.label.split(", "); return cc ? `${city}, ${countryName(cc)}` : city; });
+
+  barChart(document.getElementById("v-hours"), a.hours.map(h => ({ x: `${String(h.hour).padStart(2, "0")}:00`,
+    tip: `${String(h.hour).padStart(2, "0")}:00–${String((h.hour + 1) % 24).padStart(2, "0")}:00 IST`, y: h.visits })),
+    { label: "Page views by hour, IST", empty: "No visits recorded in this range" });
+
+  document.getElementById("v-sessions").innerHTML = a.sessions.map(s => `<tr>
+    <td>${ago(s.last_at)}</td>
+    <td class="pages-cell" title="${esc(s.pages)}">${esc(s.pages)}</td>
+    <td class="num">${s.views}</td>
+    <td>${esc(s.utm_source || s.referrer || "Direct")}</td>
+    <td>${esc([s.city, s.country && countryName(s.country)].filter(Boolean).join(", ") || "—")}</td>
+    <td>${esc([s.device, s.browser].filter(Boolean).join(" · "))}</td>
+    <td>${s.email ? esc(s.email) : "—"}</td></tr>`).join("") || `<tr><td colspan="7" class="muted">No visits yet in this range.</td></tr>`;
+}
+
+document.getElementById("v-export").addEventListener("click", () => {
+  const rows = lastVisitors?.sessions || [];
+  if (!rows.length) return toast("Nothing to export yet.");
+  const cell = v => `"${String(v ?? "").replace(/"/g, '""')}"`;
+  const csv = [["last_visit", "pages", "views", "referrer", "utm_source", "city", "country", "device", "browser", "account"],
+    ...rows.map(s => [s.last_at, s.pages, s.views, s.referrer, s.utm_source, s.city, s.country, s.device, s.browser, s.email])]
+    .map(r => r.map(cell).join(",")).join("\n");
+  const a = Object.assign(document.createElement("a"), { href: URL.createObjectURL(new Blob([csv], { type: "text/csv" })), download: `heyranks-sessions-${days}d.csv` });
+  a.click();
+  URL.revokeObjectURL(a.href);
+});
+
+function loadView() {
+  document.querySelectorAll("#views button").forEach(b => b.setAttribute("aria-selected", b.dataset.view === view));
+  document.getElementById("view-business").classList.toggle("hidden", view !== "business");
+  document.getElementById("view-visitors").classList.toggle("hidden", view !== "visitors");
+  document.getElementById("demo-wrap").classList.toggle("hidden", view !== "business");
+  document.getElementById("view-title").textContent = view === "visitors" ? "Visitor analytics" : "Business overview";
+  return view === "visitors" ? loadVisitors() : loadOverview();
+}
+document.querySelectorAll("#views button").forEach(b => b.addEventListener("click", () => {
+  view = b.dataset.view;
+  history.replaceState(null, "", view === "visitors" ? "#visitors" : location.pathname);
+  loadView().catch(err => toast(err.message));
+}));
+document.getElementById("demo").addEventListener("change", e => {
+  demo = e.target.checked; store.set("hr-admin-demo", demo ? "1" : "0");
+  Promise.all([loadOverview(), loadUsers()]).catch(err => toast(err.message));
+});
+document.getElementById("logout").addEventListener("click", async () => {
+  await api("auth/logout", { method: "POST", body: {} }).catch(() => {});
+  location.replace("/");
+});
+
+(async () => {
+  try {
+    await loadView();
+    document.getElementById("app").classList.remove("hidden");
+    await loadUsers();
+  } catch (err) {
+    if (err.status === 403) document.getElementById("denied").classList.remove("hidden");
+    else if (err.message !== "Please log in.") toast(err.message);
+  }
+})();
+</script>
+</body>
+</html>
