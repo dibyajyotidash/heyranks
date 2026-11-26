@@ -249,7 +249,7 @@ test("cost controls: weekly audits reuse recent AI work; past the monthly cap no
   await runAudit(env.DB, env, weekly);
   const w = (await call("GET", `audits/${weekly}`, { cookie: paid })).data;
   assert.equal(w.audit.status, "complete");
-  assert.ok(w.modules.ai_visibility.reused_from, "AI answers reused");
+  assert.equal(w.modules.ai_visibility.reused, true, "AI answers reused");
   assert.equal(w.summary.analysts.strategist.status, "skipped");
   assert.ok(w.summary.content?.reused_from, "content suggestions carried over");
   assert.equal(net.claude.length, before, "no new Claude calls for a weekly audit");

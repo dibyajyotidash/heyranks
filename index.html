@@ -29,7 +29,7 @@
   {"@type":"Question","name":"Will it renew automatically?","acceptedAnswer":{"@type":"Answer","text":"No. The 180-Day Pass is a one-time payment. When it ends, you can choose to renew or not. We'll never charge you without asking."}},
   {"@type":"Question","name":"Do I need technical skills?","acceptedAnswer":{"@type":"Answer","text":"No. Every task is explained in plain language, and code fixes come ready to copy and paste. If you have a developer, just forward them the report."}},
   {"@type":"Question","name":"Do you guarantee rankings?","acceptedAnswer":{"@type":"Answer","text":"No honest service can guarantee Google rankings or what an AI will say. We guarantee useful, specific weekly guidance. If the first 4 reports don't help, you get a full refund."}},
-  {"@type":"Question","name":"Can agencies use it for clients?","acceptedAnswer":{"@type":"Answer","text":"Yes. Each 180-Day Pass covers one website, and every report arrives by email so you can forward it to your clients. Buy one pass per site you want to track."}}]}
+  {"@type":"Question","name":"Can agencies use it for clients?","acceptedAnswer":{"@type":"Answer","text":"Yes. Each account tracks one website, and every report arrives by email so you can forward it to your client. For several client sites, use a separate account (and 180-Day Pass) for each site."}}]}
 ]}
 </script>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='24' height='24' rx='6' fill='%230f1720'/%3E%3Cpath d='M4 18 L9 12 L13 15 L20 6' stroke='%23d9f99d' stroke-width='2.6' fill='none' stroke-linecap='round'/%3E%3C/svg%3E">
@@ -265,7 +265,7 @@ footer a:hover{color:var(--ink)}
       <input id="url" type="text" placeholder="yourbusiness.com" autocomplete="off" aria-label="Your website">
       <button class="btn primary" type="submit">Analyse my site →</button>
     </form>
-    <div class="hint">Enter your website address, like yourbusiness.com. Free, no signup, results in under a minute.</div>
+    <div class="hint">Enter your website address, like yourbusiness.com. Free, no signup, results usually in under a minute.</div>
 
     <div class="preview" id="preview">
       <h3>Free scan: <span class="dom" id="dom"></span></h3>
@@ -416,10 +416,10 @@ footer a:hover{color:var(--ink)}
         <div class="amt">$0</div>
         <div class="per">one-time snapshot</div>
         <ul>
-          <li>One website check (16 checks)</li>
+          <li>One homepage check (50+ checks)</li>
           <li>AI-crawler access included</li>
           <li>Top 3 issues to fix</li>
-          <li>Results on screen in under a minute</li>
+          <li>Results on screen, usually in under a minute</li>
         </ul>
         <a href="#scan" onclick="document.getElementById('url').focus();return false" class="btn">Get free scan</a>
       </div>
@@ -475,7 +475,7 @@ footer a:hover{color:var(--ink)}
       <details><summary>Will it renew automatically?</summary><p>No. The 180-Day Pass is a one-time payment. When it ends, you can choose to renew or not. We'll never charge you without asking.</p></details>
       <details><summary>Do I need technical skills?</summary><p>No. Every task is explained in plain language, and code fixes come ready to copy and paste. If you have a developer, just forward them the report.</p></details>
       <details><summary>Do you guarantee rankings?</summary><p>No honest service can guarantee Google rankings or what an AI will say. We guarantee useful, specific weekly guidance. If the first 4 reports don't help, you get a full refund.</p></details>
-      <details><summary>Can agencies use it for clients?</summary><p>Yes. Each 180-Day Pass covers one website, and every report arrives by email so you can forward it to your clients. Buy one pass per site you want to track.</p></details>
+      <details><summary>Can agencies use it for clients?</summary><p>Yes. Each account tracks one website, and every report arrives by email so you can forward it to your client. For several client sites, use a separate account (and 180-Day Pass) for each site.</p></details>
     </div>
   </div>
 </section>
@@ -545,7 +545,7 @@ document.getElementById('scan').addEventListener('submit',async e=>{
       ${alerts}<div class="scan-cats">${cats}</div>${em}${dom}
       ${d.top_issues.map((x,i)=>`<div class="task"><i class="${x.severity==='critical'||x.severity==='high'?'p1':'p2'}">${i+1}</i><div><b>${esc(x.label)}</b> <span style="color:var(--muted);font-size:.8rem">${esc(SEVL[x.severity]||'')} · ${esc(x.category||'')}</span><br>${esc(x.fix)}</div></div>`).join('')}
       ${d.more_issues?`<div class="scan-sub" style="margin-top:10px">+ ${d.more_issues} more issue${d.more_issues>1?'s':''} on your homepage, each with a fix.</div>`:''}
-      <div class="scan-premium"><b>The $10 full audit goes further:</b> up to 50 pages crawled (broken links, redirects, duplicates, thin pages, canonicals), mobile and desktop Core Web Vitals, comparison with the competitors you choose, a step-by-step fix for every issue with evidence, and a 30-day plan.</div>
+      <div class="scan-premium"><b>The $10 full audit goes further:</b> up to 50 pages crawled (broken links, redirects, duplicates, thin pages, canonicals), mobile and desktop Lighthouse speed tests (mobile counts toward the score), comparison with the competitors you choose, a step-by-step fix for every issue with evidence, and a 30-day plan.</div>
       <div class="scan-sub" style="margin-top:12px"><a href="/signup?website=${encodeURIComponent(d.site)}" style="color:var(--accent-ink);font-weight:600">Create a free account</a> to save this scan, see every fix and track your score over time.</div>`;
   }catch(err){
     // Always say the scan didn't work, then show what the weekly report covers.

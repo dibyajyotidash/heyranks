@@ -99,12 +99,13 @@ webhook from another provider (INR at ≥ `cashfree_price`, or USD at ≥ `price
 
 ## Scoring (score_version 2)
 
-Every check is pass / warn (half credit) / fail / not measured. Not-measured checks are left out of every
-score, never counted as failures. Page-level checks earn credit in proportion to the share of crawled pages
-that pass. A category score is earned ÷ possible points of its measured checks; the overall Website Growth
+Every check is pass (full credit) / warn (partial, usually half) / fail (none) / not measured. Not-measured
+checks are left out of every score, never counted as failures. Page-level and link checks earn credit in
+proportion to the share of pages or links that pass. A category score is earned ÷ possible points of its measured checks; the overall Website Growth
 Health Score weights the nine health categories (Technical 20, On-page 15, Performance 15, Content 10,
 AI readiness 10, Security 10, Email 10, UX 5, Conversion 5). Any critical problem caps the overall score at
-59. Each problem is scored once, in one category. Domain expiry is an alert, not a deduction. Keyword,
+59. Each problem is scored once, in one category. Domain expiry doesn't change any category score, but a
+domain within 14 days of expiring is critical and so caps the overall score. Keyword,
 competitor, backlink and AI-visibility data never change the health score. Coverage (share of check weight
 measured) and confidence are shown with every score. Scores from before this method (v1) aren't compared
 with v2 scores ("since last scan" is hidden across the change).
@@ -121,8 +122,14 @@ Stages: collect (site-wide evidence, PageSpeed mobile + desktop) → crawl (up t
 first, then sitemap URLs; robots.txt and Crawl-delay respected; same host and its www twin only) → links
 (HEAD checks of uncrawled internal links, 30 outbound links, 60 sitemap URLs) → modules (competitors,
 keywords, backlinks, AI visibility) → analyze (findings, scores, AI analysts, roadmap, diff). Each stage
-saves its progress; a lease stops two workers running one audit. An interrupted audit resumes on the next
-status poll or the daily cron. Starting an audit while one is running joins it.
+saves its progress. One worker at a time: a run claims a 90-second lease with its own token, a heartbeat
+renews it every 30 s, and every write requires the token, so a worker that lost its lease (or whose audit
+was cancelled) stops without overwriting anything. Crawl-delay is honoured up to 5 s per request.
+
+A run that ends with work left asks for the next run itself (`POST /api/audits/:id/continue`, signed with
+HMAC-SHA256 of `CRON_SECRET`, or `ADMIN_SECRET` if that's unset). That needs `SITE_URL` and one of those
+secrets; without them an unfinished audit resumes on the next status poll or the daily cron. Starting an
+audit while one is running joins it.
 
 ## Environment variables
 
@@ -133,8 +140,9 @@ status poll or the daily cron. Starting an audit while one is running joins it.
 | `ADMIN_EMAILS` | yes | Comma-separated. These users become admins once they confirm their email |
 | `SITE_URL` | yes | `https://heyranks.com`. Used for links in emails and payment return URLs. Without it, links use `https://heyranks.com` (never the request's Host header) |
 | `FREE_SCANS_PER_HOUR` | optional | Site-wide cap on free homepage scans (default 300), on top of 10 per visitor per hour |
-| `CRON_SECRET` | Vercel | Protects `/api/cron` (Vercel sends it automatically) |
-| `ADMIN_SECRET` | optional | Manual job run: `POST /api/weekly` with header `X-Admin-Secret` |
+| `CRON_SECRET` | Vercel | Protects `/api/cron` (Vercel sends it automatically). Also signs audit continuations (with `SITE_URL`) |
+| `ADMIN_SECRET` | optional | Manual job run: `POST /api/weekly` with header `X-Admin-Secret`. Signs audit continuations when `CRON_SECRET` isn't set |
+| `AUDIT_DAILY_STARTS` | optional | With continuations on, how many due audits the daily cron starts (default 25) |
 | `CASHFREE_APP_ID`, `CASHFREE_SECRET_KEY` | yes (payments) | Cashfree API keys (merchant.cashfree.com → Developers → API keys) |
 | `CASHFREE_ENV` | yes (payments) | `sandbox` for test keys, `production` for live keys |
 | `CASHFREE_WEBHOOK_SECRET` | optional | Webhook signing secret, if different from the secret key |
@@ -147,7 +155,7 @@ status poll or the daily cron. Starting an audit while one is running joins it.
 | `OPENAI_API_KEY` + `OPENAI_MODEL` | optional | ChatGPT (OpenAI API) as an AI-visibility provider. Both must be set |
 | `GEMINI_API_KEY` + `GEMINI_MODEL` | optional | Gemini as an AI-visibility provider |
 | `PERPLEXITY_API_KEY` + `PERPLEXITY_MODEL` | optional | Perplexity (web search with citations) as an AI-visibility provider |
-| `AI_VISIBILITY_MAX_QUESTIONS` | optional | Questions per audit (default 5, plus one "what do you know about us" question) |
+| `AI_VISIBILITY_MAX_QUESTIONS` | optional | Questions per audit (default and maximum 5, plus one "what do you know about us" question) |
 | `AUDIT_COST_CAP_USD` | optional | Hard cap on paid calls per audit (default 1.50) |
 | `USER_MONTHLY_COST_CAP_USD` | optional | Hard cap on paid calls per customer per 30 days (default 3.00). Past it, audits still run but skip paid modules |
 | `ANALYTICS_SALT` | optional | Any random string, mixed into the daily anonymous visitor ID |

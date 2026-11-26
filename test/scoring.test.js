@@ -48,7 +48,7 @@ test("unmeasured checks never count as failures", () => {
   assert.equal(s.overall, avg);
 });
 
-test("a critical problem caps the overall score; domain expiry is an alert, not a deduction", () => {
+test("a critical problem caps the overall score; domain expiry leaves category maths alone but can cap", () => {
   const ok = scoreChecks(runChecks(base(), "scan"));
   const home = { ...base().home, final_url: "http://example.com/" };
   const insecure = scoreChecks(runChecks(base({ home, pages: [home] }), "scan"));
@@ -58,8 +58,11 @@ test("a critical problem caps the overall score; domain expiry is an alert, not 
 
   const expiring = scoreChecks(runChecks(base({ rdap: { domain: "example.com", expires: new Date(Date.now() + 10 * 864e5).toISOString(), days_left: 10, registrar: "R" } }), "scan"));
   assert.ok(expiring.alerts.some(a => a.id === "domain_expiry" && a.severity === "critical"));
-  const withoutCap = expiring.capped ? expiring.capped.from : expiring.overall;
-  assert.equal(withoutCap, ok.overall, "expiry doesn't change the category maths");
+  assert.equal(expiring.capped?.from, ok.overall, "expiry doesn't change the category maths");
+  assert.equal(expiring.overall, Math.min(ok.overall, 59), "a domain 10 days from expiry is critical, so it caps the score");
+  const later = scoreChecks(runChecks(base({ rdap: { domain: "example.com", expires: new Date(Date.now() + 45 * 864e5).toISOString(), days_left: 45, registrar: "R" } }), "scan"));
+  assert.equal(later.overall, ok.overall, "45 days out: an alert only, no cap");
+  assert.ok(later.alerts.some(a => a.id === "domain_expiry"));
 });
 
 test("page-level checks give proportional credit and soften severity when few pages are affected", () => {

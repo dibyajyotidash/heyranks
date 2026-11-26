@@ -42,7 +42,8 @@ test("DataForSEO: unavailable without credentials, nothing invented", async () =
     const k = await keywordsModule({}, { domain: "example.com", market: "IN" });
     assert.equal(k.status, "unavailable");
     assert.equal(k.data, null);
-    assert.match(k.message, /DATAFORSEO_LOGIN/);
+    assert.match(k.message, /isn't switched on/);
+    assert.doesNotMatch(k.message, /DATAFORSEO|API key|_PASSWORD/, "customers never see setting names");
     assert.equal((await backlinksModule({}, { domain: "example.com" })).status, "unavailable");
   });
 });
@@ -69,11 +70,12 @@ test("DataForSEO: parses ranked keywords and ideas, records cost, computes visib
   });
 });
 
-test("DataForSEO errors are reported, not hidden", async () => {
+test("DataForSEO errors are reported to the customer without the provider's raw message", async () => {
   await withFetch(() => Response.json({ status_code: 40100, status_message: "You are not authorized" }, { status: 401 }), async () => {
     const k = await keywordsModule({ DATAFORSEO_LOGIN: "u", DATAFORSEO_PASSWORD: "bad" }, { domain: "example.com", market: "US" });
     assert.equal(k.status, "error");
-    assert.match(k.message, /not authorized/);
+    assert.match(k.message, /didn't answer/);
+    assert.doesNotMatch(k.message, /not authorized/, "the raw error goes to the logs only");
   });
 });
 

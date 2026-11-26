@@ -1,7 +1,7 @@
 // Crawler primitives: robots.txt, sitemaps, URL handling and HTML extraction. No network.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { parseRobots, robotsAllows, robotsCrawlDelay, parseSitemap, normalizeUrl, sameSite, isCrawlable, extractPage, similarity } from "../lib/crawler.js";
+import { parseRobots, robotsAllows, robotsCrawlDelay, robotsPatternMatches, parseSitemap, normalizeUrl, sameSite, isCrawlable, extractPage, similarity } from "../lib/crawler.js";
 
 test("robots.txt: longest match wins, allow wins ties, wildcards and $ anchors", () => {
   const r = parseRobots(`
@@ -32,6 +32,15 @@ Sitemap: https://example.com/sitemap.xml`);
   assert.deepEqual(r.sitemaps, ["https://example.com/sitemap.xml"]);
   assert.equal(robotsAllows(parseRobots("User-agent: *\nDisallow: /\nAllow: /$"), "x", "/"), true, "equal-length allow wins");
   assert.equal(robotsAllows(null, "x", "/anything"), true, "no robots.txt means allowed");
+});
+
+test("robots.txt wildcards: matching is linear, even for hostile patterns", () => {
+  const cases = [["/", "/x", true], ["/a*c", "/abc", true], ["/a*c", "/ab", false], ["/*.pdf$", "/x/y.pdf", true], ["/*.pdf$", "/x.pdf?z", false],
+    ["/$", "/", true], ["/$", "/a", false], ["/a*b*c", "/aXbYc/z", true], ["/a*b*c$", "/aXbYcZ", false], ["/*", "/anything", true], ["*.php", "/index.php", true]];
+  for (const [p, path, want] of cases) assert.equal(robotsPatternMatches(p, path), want, `${p} vs ${path}`);
+  const started = Date.now();
+  assert.equal(robotsPatternMatches(`/${"*a".repeat(40)}b`, `/${"a".repeat(60)}`), false);
+  assert.ok(Date.now() - started < 50, "no catastrophic backtracking");
 });
 
 test("sitemaps: urlset, index, CDATA and entities", () => {

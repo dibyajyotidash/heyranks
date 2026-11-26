@@ -472,7 +472,7 @@ function renderHistory() {
     <tr class="clickable" tabindex="0" data-report="${esc(r.id)}">
       <td>${esc(r.label)}</td>
       <td class="num"><b>${r.score_end}</b></td>
-      <td class="num ${r.change > 0 ? "up" : r.change < 0 ? "down" : ""}">${signed(r.change)}</td>
+      <td class="num ${r.change > 0 ? "up" : r.change < 0 ? "down" : ""}"${r.method_changed ? ` title="Scoring method changed this period; compared from the first scan with the new method"` : ""}>${signed(r.change)}${r.method_changed ? "*" : ""}</td>
       <td class="num">${r.score_avg}</td>
       <td class="num">${r.score_min}–${r.score_max}</td>
       <td class="num">${r.issues_resolved}</td>
@@ -504,7 +504,7 @@ async function openReport(id) {
       <span class="badge">${r.scans_count} scan${r.scans_count === 1 ? "" : "s"}</span>
     </div>
     <div class="grid cols-3" style="gap:10px">
-      <div class="card tile"><div class="label">Score</div><div class="value">${r.score_end}</div><div class="delta">${deltaHtml(r.change, `from ${r.score_start}`)}</div></div>
+      <div class="card tile"><div class="label">Score</div><div class="value">${r.score_end}</div><div class="delta">${deltaHtml(r.change, `from ${r.score_start}`)}${r.method_changed ? " · from the first scan with the new scoring method" : ""}</div></div>
       <div class="card tile"><div class="label">Average</div><div class="value">${r.score_avg}</div><div class="delta">low ${r.score_min} · high ${r.score_max}</div></div>
       <div class="card tile"><div class="label">Mobile speed</div><div class="value">${r.speed_avg ?? "–"}</div><div class="delta">period average</div></div>
     </div>

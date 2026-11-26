@@ -106,7 +106,7 @@ function showProgress(a) {
   const pctDone = a.stage === "crawl" ? Math.round((a.pages_crawled / a.page_limit) * 60) + 10 : { collect: 5, links: 72, modules: 82, analyze: 94 }[a.stage] || 3;
   setState(`<div class="card" style="max-width:640px;margin:40px auto">
     <div class="row between"><h2>Auditing ${esc(a.hostname)}</h2><span class="badge live">Running</span></div>
-    <p class="muted small" style="margin-top:6px">A full audit takes about 2–5 minutes. You can leave this page; the report will be here when it's done.</p>
+    <p class="muted small" style="margin-top:6px">A full audit usually takes 3–10 minutes (longer for slow sites, or ones that ask crawlers to pause between pages). You can leave this page; the report will be here when it's done.</p>
     <div class="meter" role="progressbar" aria-valuenow="${pctDone}" aria-valuemin="0" aria-valuemax="100" aria-label="Audit progress" style="margin-top:18px"><div style="width:${pctDone}%;background:var(--series)"></div></div>
     <p style="margin-top:10px;font-size:.9rem"><span class="spinner"></span> ${esc(a.stage_label || "Starting")}${a.stage === "crawl" ? ` · ${a.pages_crawled} of up to ${a.page_limit} pages` : ""}</p>
     <button class="btn ghost sm" id="cancel" style="margin-top:16px">Cancel audit</button>
@@ -291,7 +291,7 @@ function performanceExtra() {
 
 function securityExtra() {
   const f = R.facts;
-  if (!f) return "";
+  if (!f) return `<div class="unavailable" style="margin-top:14px">The raw headers, certificate and DNS records behind this audit are kept for 45 days (always for your latest audit).</div>`;
   const h = f.headers || {};
   const t = f.tls, dm = f.domain;
   return `<div class="grid cols-2" style="margin-top:14px;align-items:start">
@@ -334,7 +334,7 @@ function keywordsSection() {
   const d = m.data;
   const table = (rows, cols) => `<div class="table-wrap"><table><thead><tr>${cols.map(c => `<th class="${c[2] || ""}">${c[0]}</th>`).join("")}</tr></thead><tbody>${rows.map(r => `<tr>${cols.map(c => `<td class="${c[2] || ""}">${c[1](r)}</td>`).join("")}</tr>`).join("")}</tbody></table></div>`;
   const opp = R.findings.filter(f => f.category === "keywords");
-  return section("keywords", "Keyword opportunities", `Measured by ${esc(m.source)} on ${date(m.fetched_at)}${m.reused_from ? " (reused from an earlier audit to keep costs down)" : ""}. Volumes are monthly estimates from the provider; positions are a snapshot.`, `
+  return section("keywords", "Keyword opportunities", `Measured by ${esc(m.source)} on ${date(m.fetched_at)}${m.reused ? " (reused from an earlier audit to keep costs down)" : ""}. Volumes are monthly estimates from the provider; positions are a snapshot.`, `
     <div class="grid cols-3"><div class="card tile"><div class="label">Search visibility</div><div class="value">${d.visibility_score ?? "–"}<small>${d.visibility_score !== null ? "%" : ""}</small></div><div class="delta">Share of your ranked keywords' search volume where you're on page one.</div></div>
       <div class="card tile"><div class="label">Keywords you rank for</div><div class="value">${fmt(d.total_ranked)}</div><div class="delta">in ${esc(d.market)}</div></div>
       <div class="card tile"><div class="label">On page one</div><div class="value">${d.ranked.filter(k => k.position <= 10).length}</div><div class="delta">of the ${d.ranked.length} shown</div></div></div>
@@ -386,11 +386,11 @@ function visibilitySection() {
   const d = m.data;
   const brandQ = d.results.filter(r => r.brand_question && !r.error);
   const sentiments = d.results.filter(r => r.sentiment);
-  return section("ai_visibility", "AI search visibility", `Asked on ${date(m.fetched_at)}${m.reused_from ? ` (reused from the audit of ${date(m.reused_from)})` : ""} through each provider's API. Consumer apps with web search, memory or personalisation can answer differently, and answers change over time.`, `
+  return section("ai_visibility", "AI search visibility", `Asked on ${date(m.fetched_at)}${m.reused ? " (reused from an earlier audit to keep costs down)" : ""} through each provider's API. Consumer apps with web search, memory or personalisation can answer differently, and answers change over time.`, `
     <div class="grid cols-3">
       <div class="card tile"><div class="label">Mentioned in answers</div><div class="value">${d.score ?? "–"}<small>${d.score !== null ? "%" : ""}</small></div><div class="delta">${d.providers.reduce((s, p) => s + p.mentioned, 0)} of ${d.sample_size} answers · confidence <b>${esc(d.confidence)}</b> (small sample)</div></div>
       <div class="card tile"><div class="label">Assistants asked</div><div class="value">${d.providers.length}</div><div class="delta">${d.providers.map(p => esc(p.label)).join(", ")}</div></div>
-      <div class="card tile"><div class="label">Sentiment where mentioned</div><div class="value">${sentiments.length ? sentiments.filter(r => r.sentiment === "positive").length + "<small> positive</small>" : "–"}</div><div class="delta">${d.sentiment === "ok" ? `${sentiments.length} passage${sentiments.length === 1 ? "" : "s"} rated by Claude` : "Not assessed (needs Claude)"}</div></div>
+      <div class="card tile"><div class="label">Sentiment where mentioned</div><div class="value">${sentiments.length ? sentiments.filter(r => r.sentiment === "positive").length + "<small> positive</small>" : "–"}</div><div class="delta">${d.sentiment === "ok" ? `${sentiments.length} passage${sentiments.length === 1 ? "" : "s"} rated by Claude` : d.sentiment === "unavailable" ? "Not assessed in this report" : "Couldn't be assessed this time"}</div></div>
     </div>
     ${R.findings.filter(f => f.category === "ai_visibility").map(issueCard).join("")}
     <div class="card" style="margin-top:12px"><h3>By assistant</h3><div class="table-wrap"><table style="margin-top:8px"><thead><tr><th>Assistant</th><th>Model</th><th class="num">Answers</th><th class="num">Mentioned you</th><th>Mode</th></tr></thead><tbody>
@@ -408,7 +408,7 @@ function backlinksSection() {
   if (!m || m.status !== "ok") return section("backlinks", "Backlinks", "Links to your site from other websites, from a backlink data provider.", unavailable(m));
   const d = m.data, s = d.self;
   const comp = d.competitors.filter(c => !c.error);
-  return section("backlinks", "Backlinks", `Measured by ${esc(m.source)} on ${date(m.fetched_at)}${m.reused_from ? " (reused from an earlier audit to keep costs down)" : ""}. “Rank” is DataForSEO's own metric (0–1000), not Domain Authority or Domain Rating.`, `
+  return section("backlinks", "Backlinks", `Measured by ${esc(m.source)} on ${date(m.fetched_at)}${m.reused ? " (reused from an earlier audit to keep costs down)" : ""}. “Rank” is DataForSEO's own metric (0–1000), not Domain Authority or Domain Rating.`, `
     <div class="grid cols-3">
       <div class="card tile"><div class="label">Referring domains</div><div class="value">${fmt(s.referring_domains)}</div><div class="delta">${d.change_since_last !== null ? `${d.change_since_last >= 0 ? "+" : ""}${d.change_since_last} since the last audit` : "First measurement"}</div></div>
       <div class="card tile"><div class="label">Backlinks</div><div class="value">${fmt(s.backlinks)}</div><div class="delta">${s.nofollow_links !== null ? `${fmt(s.nofollow_links)} nofollow` : ""}${s.broken_backlinks ? ` · ${fmt(s.broken_backlinks)} pointing to broken pages` : ""}</div></div>
@@ -467,9 +467,9 @@ function evidenceSection() {
     ["Crawler", `HeyRanksBot read ${s.pages?.crawled ?? "?"} pages${s.pages?.complete ? " (every page it found)" : ` (limit ${s.pages?.limit}; ${s.pages?.queued_left ?? 0} more discovered)`}, respecting robots.txt; ${s.pages?.links_checked ?? 0} extra links checked.`],
     ["DNS, RDAP, TLS", "DNS over HTTPS (Cloudflare), rdap.org registration data, a TLS handshake from our server."],
     ["Google PageSpeed Insights", R.modules.performance?.status === "ok" ? "Lighthouse lab tests (mobile + desktop) and Chrome UX Report field data." : `Not available: ${R.modules.performance?.message || ""}`],
-    ["Keyword & backlink data", i.dataforseo.configured ? "DataForSEO." : `Not configured (${i.dataforseo.needs}).`],
-    ["AI visibility", i.ai_visibility.filter(x => x.configured).map(x => x.label).join(", ") || "No assistant configured."],
-    ["AI analysts", i.analysts.configured ? `Claude (${i.analysts.model}): executive summary and content suggestions, from measured findings only.` : "Not configured; summaries are written from the findings by HeyRanks."],
+    ["Keyword & backlink data", i.dataforseo.configured ? "DataForSEO." : `Not included in this report${i.dataforseo.needs ? ` (admin: set ${i.dataforseo.needs})` : ""}.`],
+    ["AI visibility", i.ai_visibility.filter(x => x.configured).map(x => x.label).join(", ") || "Not included in this report."],
+    ["AI analysts", i.analysts.configured ? `Claude (${i.analysts.model}): executive summary and content suggestions, from measured findings only.` : "Not included; summaries are written from the findings by HeyRanks."],
   ];
   return section("evidence", "Audit evidence and methodology", "", `
     ${p ? `<div class="card"><h3>Crawled pages (${p.length})</h3><div class="table-wrap"><table style="margin-top:8px"><thead><tr><th>URL</th><th class="num">Status</th><th class="num">Depth</th><th class="wrap">Title</th><th class="num">Words</th><th class="num">Issues</th></tr></thead><tbody>
@@ -511,9 +511,10 @@ function detailHtml(f) {
 
 function recheckHtml(v, at) {
   if (!v.supported) return `<div class="alert info">${esc(v.message || "This can't be re-checked on its own.")}</div>`;
-  if (v.passing === null) return `<div class="alert info">Re-checked ${ago(at || v.at)}: couldn't be measured right now. ${esc(v.details?.[0]?.actual || "")}</div>`;
+  const list = v.details?.some(d => d.url || d.actual) ? `<ul class="steps-list small" style="margin-top:6px">${v.details.slice(0, 5).map(d => `<li>${d.url ? `<span class="url">${esc(d.url)}</span>: ` : ""}${esc(d.actual || "")}</li>`).join("")}</ul>` : "";
+  if (v.passing === null) return `<div class="alert info"><b>Not confirmed yet.</b> Re-checked ${ago(at || v.at)}: ${v.checked ? `${v.checked} item${v.checked === 1 ? "" : "s"} measured, but ` : ""}some of it couldn't be measured right now (blocked, rate-limited or timed out). Try again later.${list}</div>`;
   return `<div class="alert ${v.passing ? "ok" : "error"}"><b>${v.passing ? "Fixed." : "Still failing."}</b> Re-checked ${ago(at || v.at)} on ${v.checked} item${v.checked === 1 ? "" : "s"}.
-    ${!v.passing && v.details?.length ? `<ul class="steps-list small" style="margin-top:6px">${v.details.slice(0, 5).map(d => `<li>${d.url ? `<span class="url">${esc(d.url)}</span>: ` : ""}${esc(d.actual || "")}</li>`).join("")}</ul>` : ""}</div>`;
+    ${v.details?.some(d => d.url) || !v.passing ? list : ""}</div>`;
 }
 
 function printAppendix() {
