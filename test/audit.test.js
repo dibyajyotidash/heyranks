@@ -62,15 +62,22 @@ async function paidUserWithSite(email) {
 }
 
 // ─── #5 score ─────────────────────────────────────────────────────────────────
-test("#5 the score doesn't change when PageSpeed doesn't answer", async () => {
+test("#5 missing PageSpeed data is left out of the score, never counted as a failure", async () => {
   net.psi = null;
   const without = await runScan(SITE, env);
+  assert.equal(without.speed, null);
+  assert.equal(without.scores.categories.performance.score, null, "performance isn't measured");
+  assert.ok(without.checks.filter(c => c.category === "performance").every(c => c.status === "na"));
+  const measured = Object.values(without.scores.categories).filter(c => c.score !== null);
+  const average = Math.round(measured.reduce((s, c) => s + c.score * c.weight, 0) / measured.reduce((s, c) => s + c.weight, 0));
+  assert.equal(without.scores.capped?.from ?? without.score, average, "the overall score is the average of measured categories only");
+
   net.psi = 35;
   const withSlow = await runScan(SITE, env);
-  assert.equal(without.speed, null);
   assert.equal(withSlow.speed, 35);
-  assert.equal(without.score, withSlow.score, "speed is shown, not scored");
-  assert.ok(withSlow.issues.some(i => i.id === "speed"), "a slow site still gets the speed fix");
+  assert.equal(withSlow.scores.categories.performance.score, 35);
+  assert.ok(withSlow.issues.some(i => i.id === "perf_score"), "a slow site gets the speed fix");
+  assert.ok(withSlow.scores.coverage > without.scores.coverage, "measuring speed raises coverage");
   net.psi = null;
 });
 
