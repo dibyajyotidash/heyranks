@@ -67,15 +67,15 @@ to `legacy_customers`/`legacy_reports`, and their data is copied into users, sit
 | Plan | Sites | Weekly email | Period summaries by email | Rescans/day |
 |---|---|---|---|---|
 | Free | 1 | – | – | 3 |
-| 180-Day Pass (₹849) | 1 | ✓ | ✓ | 10 |
-| Lifetime (₹4,149) | 3 | ✓ | ✓ | 10 |
+| 180-Day Pass ($10, charged as ₹849) | 1 | ✓ | ✓ | 10 |
+| Lifetime (no longer sold; existing customers keep it) | 3 | ✓ | ✓ | 10 |
 
-Prices live in `PLANS` in `lib/plans.js` (in paise). The landing page copy repeats them, so change both.
+Prices live in `PLANS` in `lib/plans.js`: `price` is the advertised USD price in cents, `cashfree_price`
+is what Cashfree charges in paise. The landing page copy repeats the $10, so change both.
 New accounts start on Free. A paid plan is switched on by a **Cashfree payment**, by a verified
-webhook from another provider, or by an admin (Admin → Users → Manage).
+webhook from another provider (INR at ≥ `cashfree_price`, or USD at ≥ `price`), or by an admin
+(Admin → Users → Manage).
 
-- **Lifetime is capped at 500 sales** (`LIFETIME_CAP` in `lib/plans.js`). Checkout refuses Lifetime once
-  500 are paid or in checkout, and the pricing card shows how many places are left.
 - **A full refund removes access automatically.** A refunded 180-Day Pass loses its 180 days, and a refunded
   Lifetime plan returns to Free. Partial refunds don't change access.
 - **The score never depends on PageSpeed.** It uses the 10 fixed checks, whose weights add up to 100.

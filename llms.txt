@@ -1,6 +1,6 @@
 # HeyRanks
 
-> HeyRanks checks a small business's website for the technical basics that Google and AI assistants rely on, explains each problem in plain English, and gives copy-paste code to fix it. Paid plans rescan every Monday and email a report with up to 5 prioritised fixes. It costs ₹849 one-time for 180 days (26 weekly reports), with a ₹4,149 Lifetime Founder plan limited to 500 customers.
+> HeyRanks checks a small business's website for the technical basics that Google and AI assistants rely on, explains each problem in plain English, and gives copy-paste code to fix it. Paid plans rescan every Monday and email a report with up to 5 prioritised fixes. It costs $10 one-time for 180 days (26 weekly reports), with no auto-renewal.
 
 HeyRanks is a product of DexoSoft Solutions, based in Bhubaneswar, Odisha, India. It suits local businesses (clinics, restaurants, salons, real estate, coaching), e-commerce brands, freelancers and marketing agencies.
 

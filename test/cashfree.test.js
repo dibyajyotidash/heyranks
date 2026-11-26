@@ -65,12 +65,13 @@ before(async () => {
   await call("PATCH", "me", { cookie: priya, body: { name: "Priya", whatsapp: "+91 98765 43210" } });
 });
 
-test("config advertises Cashfree and INR prices", async () => {
+test("config advertises $10 and says Cashfree charges ₹849", async () => {
   const { data } = await call("GET", "config");
   assert.deepEqual(data.cashfree, { mode: "sandbox" });
-  assert.equal(data.currency, "INR");
-  assert.equal(data.plans["180day"].price, 84900);
-  assert.equal(data.plans.lifetime.price, 414900);
+  assert.equal(data.currency, "USD");
+  assert.equal(data.plans["180day"].price, 1000);
+  assert.equal(data.plans["180day"].cashfree_price, 84900);
+  assert.deepEqual(Object.keys(data.payment_links), ["180day"], "Lifetime isn't sold any more");
 });
 
 test("checkout needs a login and a paid plan name", async () => {
@@ -129,19 +130,24 @@ test("a verified webhook grants the plan once, even when repeated", async () => 
   assert.ok(days > 179 && days < 181, `granted once, not stacked: ${days} days`);
 });
 
-test("a webhook can't be believed over Cashfree's API", async () => {
+test("Lifetime can't be bought any more", async () => {
   const r = await call("POST", "checkout", { cookie: ravi, body: { plan: "lifetime" } });
-  assert.equal(orders.get(r.data.order_id).order_amount, 4149);
+  assert.equal(r.status, 400);
+  assert.equal(created, 1, "no Cashfree order was created");
+});
+
+test("a webhook can't be believed over Cashfree's API", async () => {
+  const r = await call("POST", "checkout", { cookie: ravi, body: { plan: "180day" } });
+  assert.equal(orders.get(r.data.order_id).order_amount, 849);
   // Signed event says paid, but the API still shows the order ACTIVE.
   assert.equal((await signedWebhook(paidEvent(r.data.order_id))).data.status, "pending");
   // Paid, but for the wrong amount.
   Object.assign(orders.get(r.data.order_id), { order_status: "PAID", order_amount: 1 });
   assert.equal((await signedWebhook(paidEvent(r.data.order_id))).data.status, "pending");
   assert.equal((await call("GET", "me", { cookie: ravi })).data.user.plan_active, "free");
-  // Correct amount: Lifetime granted, and no more checkouts needed.
-  orders.get(r.data.order_id).order_amount = 4149;
-  assert.equal((await call("GET", `checkout/${r.data.order_id}`, { cookie: ravi })).data.user.plan_active, "lifetime");
-  assert.equal((await call("POST", "checkout", { cookie: ravi, body: { plan: "180day" } })).status, 400);
+  // Correct amount: the pass is granted.
+  orders.get(r.data.order_id).order_amount = 849;
+  assert.equal((await call("GET", `checkout/${r.data.order_id}`, { cookie: ravi })).data.user.plan_active, "180day");
 });
 
 test("a partial refund leaves access alone", async () => {
@@ -155,17 +161,22 @@ test("a full refund takes the payment out of revenue and the plan away", async (
   const row = await env.DB.prepare("SELECT status FROM payments WHERE provider_ref = ?").bind(orderId).first();
   assert.equal(row.status, "refunded");
   const paid = await env.DB.prepare("SELECT SUM(amount) AS n FROM payments WHERE status = 'paid'").first();
-  assert.equal(paid.n, 414900, "only Ravi's lifetime payment counts");
+  assert.equal(paid.n, 84900, "only Ravi's payment counts");
   assert.equal((await call("GET", "me", { cookie: priya })).data.user.plan_active, "free", "the refunded 180 days are gone");
   // Replaying the same refund webhook changes nothing.
   await signedWebhook({ type: "REFUND_STATUS_WEBHOOK", data: { refund: { order_id: orderId, refund_status: "SUCCESS", refund_amount: 849 } } });
   assert.equal((await call("GET", "me", { cookie: priya })).data.user.plan_active, "free");
 });
 
-test("a full Lifetime refund returns the account to Free", async () => {
-  const lifetimeOrder = (await env.DB.prepare("SELECT provider_ref FROM payments WHERE plan = 'lifetime' AND status = 'paid'").first()).provider_ref;
-  await signedWebhook({ type: "REFUND_STATUS_WEBHOOK", data: { refund: { order_id: lifetimeOrder, refund_status: "SUCCESS", refund_amount: 4149 } } });
-  assert.equal((await call("GET", "me", { cookie: ravi })).data.user.plan_active, "free");
+test("an existing Lifetime customer's full refund still returns the account to Free", async () => {
+  // Lifetime was sold before; those buyers keep it, and refunds for those orders still work.
+  const id = crypto.randomUUID(), now = new Date().toISOString();
+  await env.DB.prepare(`INSERT INTO users (id, email, plan, email_verified_at, created_at, updated_at) VALUES (?, 'founder@example.com', 'lifetime', ?, ?, ?)`)
+    .bind(id, now, now, now).run();
+  await env.DB.prepare(`INSERT INTO payments (id, user_id, email, provider, provider_ref, plan, amount, currency, status, created_at)
+    VALUES (?, ?, 'founder@example.com', 'cashfree', 'hr_old_lifetime', 'lifetime', 414900, 'INR', 'paid', ?)`).bind(crypto.randomUUID(), id, now).run();
+  await signedWebhook({ type: "REFUND_STATUS_WEBHOOK", data: { refund: { order_id: "hr_old_lifetime", refund_status: "SUCCESS", refund_amount: 4149 } } });
+  assert.equal((await env.DB.prepare("SELECT plan FROM users WHERE id = ?").bind(id).first()).plan, "free");
 });
 
 test("the daily job settles a paid order whose webhook never arrived, once", async () => {

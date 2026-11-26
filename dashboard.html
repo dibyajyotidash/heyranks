@@ -194,7 +194,7 @@ async function boot() {
   renderSiteSelect();
   route();
   const q = new URLSearchParams(location.search);
-  const picked = { "180day": "180-Day Pass", lifetime: "Lifetime Founder" }[q.get("plan")];
+  const picked = { "180day": "180-Day Pass" }[q.get("plan")];
   if (picked && me.plan_active === "free") {
     // Came from a paid "Start" button but checkout couldn't open: point at the Plan card instead of dropping the choice.
     toast(`Your account is ready. Finish upgrading to the ${picked} below.`);
@@ -497,7 +497,7 @@ async function renderPlan() {
     return url ? `${esc(url)}${url.includes("?") ? "&" : "?"}prefilled_email=${encodeURIComponent(me.email)}`
       : `mailto:hello@dexosoftsolutions.com?subject=${encodeURIComponent(`Upgrade ${me.email} to ${plan}`)}`;
   };
-  const price = plan => HR.money(config.plans?.[plan]?.price ?? 0, config.currency || "INR");
+  const price = plan => HR.money(config.plans?.[plan]?.price ?? 0, config.currency || "USD");
   const p = me.plan_active;
   document.getElementById("plan-card").innerHTML = `
     <div class="card-head"><div><h2>Plan</h2><p>${p === "free" ? "Free forever. Upgrade any time." : p === "lifetime" ? "Paid once. Reports for life." : `Active until ${date(me.plan_expires_at)}`}</p></div><span class="badge ${p === "free" ? "" : "good"}">${esc(me.plan_label)}</span></div>
