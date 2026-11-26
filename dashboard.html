@@ -53,6 +53,16 @@
 
       <div class="grid cols-4" id="kpis"></div>
 
+      <div id="ai-summary-card" class="card hidden" style="margin-top:16px;border-left:4px solid var(--series)">
+        <div class="card-head" style="gap:12px">
+          <span style="font-size:1.3rem" aria-hidden="true">✦</span>
+          <div>
+            <div class="label" style="text-transform:uppercase;letter-spacing:.06em;font-size:.72rem;color:var(--series);margin-bottom:4px">AI Analysis</div>
+            <p id="ai-summary-text" style="color:var(--ink);line-height:1.6;margin:0"></p>
+          </div>
+        </div>
+      </div>
+
       <div class="card" style="margin-top:16px">
         <div class="card-head">
           <div>
@@ -90,6 +100,10 @@
           <div class="card">
             <div class="card-head"><div><h2>Keywords</h2><p>The searches you want to be found for.</p></div><a href="#account" class="small">Edit</a></div>
             <ul class="pill-list" id="keywords"></ul>
+          </div>
+          <div class="card hidden" id="domain-card">
+            <div class="card-head"><h2>Domain intelligence</h2></div>
+            <dl class="kv-list" id="domain-list"></dl>
           </div>
         </div>
       </div>
@@ -243,8 +257,43 @@ function renderSite() {
     : "Not scanned yet";
   renderKpis();
   renderFixes();
+  renderIntelligence();
   document.getElementById("passed").innerHTML = latest?.passed.length ? latest.passed.map(p => `<li>${esc(p)}</li>`).join("") : `<li class="muted" style="list-style:none">Nothing passing yet.</li>`;
   document.getElementById("keywords").innerHTML = site.keywords.length ? site.keywords.map(k => `<li>${esc(k)}</li>`).join("") : `<li>No keywords yet</li>`;
+}
+
+function renderIntelligence() {
+  const d = detail.latest?.details;
+  // AI summary
+  const aiCard = document.getElementById("ai-summary-card");
+  const aiSummary = d?.aiSummary;
+  if (aiSummary) {
+    document.getElementById("ai-summary-text").textContent = aiSummary;
+    aiCard.classList.remove("hidden");
+  } else {
+    aiCard.classList.add("hidden");
+  }
+  // Domain intelligence
+  const domCard = document.getElementById("domain-card");
+  const dom = d?.domain;
+  if (dom) {
+    const rows = [];
+    if (dom.registrar)   rows.push(`<div><dt>Registrar</dt><dd>${esc(dom.registrar)}</dd></div>`);
+    if (dom.age_years !== null) rows.push(`<div><dt>Domain age</dt><dd>${dom.age_years === 0 ? "< 1 year" : `${dom.age_years} yr${dom.age_years === 1 ? "" : "s"}`}</dd></div>`);
+    if (dom.expires) {
+      const cls = dom.days_left !== null && dom.days_left <= 60 ? " class=\"down\"" : dom.days_left !== null && dom.days_left <= 120 ? " class=\"warn\"" : "";
+      rows.push(`<div><dt>Expires</dt><dd${cls}>${date(dom.expires)}${dom.days_left !== null ? ` (${dom.days_left}d)` : ""}</dd></div>`);
+    }
+    if (dom.nameservers?.length) rows.push(`<div><dt>Nameservers</dt><dd>${dom.nameservers.slice(0, 2).map(esc).join(", ")}</dd></div>`);
+    if (rows.length) {
+      document.getElementById("domain-list").innerHTML = rows.join("");
+      domCard.classList.remove("hidden");
+    } else {
+      domCard.classList.add("hidden");
+    }
+  } else {
+    domCard.classList.add("hidden");
+  }
 }
 
 function renderKpis(month) {
@@ -459,13 +508,12 @@ async function renderPlan() {
     </ul>
     ${p !== "lifetime" ? `<div class="row">
       <a class="btn primary sm" data-buy="180day" href="${link("180day")}">${p === "180day" ? "Add 180 days" : "180-Day Pass"} · ${price("180day")}</a>
-      <a class="btn sm" data-buy="lifetime" href="${link("lifetime")}">Lifetime · ${price("lifetime")}</a>
     </div>
     <p class="hint" style="margin-top:8px">${config.cashfree
       ? "One-time payment through Cashfree: UPI, cards, net banking or wallets. Your plan switches on as soon as it goes through."
-      : config.payment_links?.["180day"] || config.payment_links?.lifetime
+      : config.payment_links?.["180day"]
         ? `Pay with ${esc(me.email)} and your plan switches on automatically${me.email_verified ? "" : " once your email is confirmed"}.`
-        : "Online payment is being set up. Tap a plan to email us and we'll send you a secure payment link."}</p>` : ""}`;
+        : "Online payment is being set up. Tap the plan to email us and we'll send you a secure payment link."}</p>` : ""}`;
 }
 document.getElementById("plan-card").addEventListener("click", async e => {
   const b = e.target.closest("[data-buy]");

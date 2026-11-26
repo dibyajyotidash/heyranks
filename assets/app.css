@@ -214,3 +214,11 @@ tbody tr.clickable:hover, tbody tr[aria-selected="true"] { background: var(--sur
 .empty-state { text-align: center; padding: 48px 20px; }
 .empty-state h2 { margin-bottom: 8px; }
 .empty-state p { color: var(--muted); max-width: 440px; margin: 0 auto 20px; }
+
+/* ─── domain intelligence & AI summary ─── */
+.kv-list { display: flex; flex-direction: column; gap: 8px; }
+.kv-list > div { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; font-size: .9rem; }
+.kv-list dt { color: var(--muted); flex: none; }
+.kv-list dd { font-weight: 600; text-align: right; word-break: break-all; }
+.kv-list .down { color: var(--bad); }
+.kv-list .warn { color: var(--warn); }
